@@ -1,5 +1,5 @@
 # ============================================================
-# IRONCLAD_V31 - Strategic Entry Engine (V31.18 Full Visibility)
+# IRONCLAD_V31.18 - Strategic Entry Engine (ID-Chain Integrity)
 # ============================================================
 import os
 import yaml
@@ -8,7 +8,7 @@ import traceback
 from typing import List, Dict, Any
 import pandas as pd
 
-# [2-1] OPERATORS 정의
+# [1] OPERATORS 정의
 OPERATORS = {
     "<": operator.lt,
     "<=": operator.le,
@@ -17,30 +17,27 @@ OPERATORS = {
     "==": operator.eq
 }
 
-# [2-2] load_strategy_entry_rules
-def load_strategy_entry_rules(strategy_path: str) -> Dict[str, Any]:
-    all_rules = {}
-    if not os.path.exists(strategy_path):
-        raise RuntimeError(f"STRATEGY_ROOT_MISSING: {strategy_path}")
+# [2] load_strategy_entry_rules (단일 경로 해석 방식으로 변경)
+def load_strategy_entry_rules(strat_path: str) -> Dict[str, Any]:
+    """
+    run.py의 루프에서 전달받은 특정 전략 폴더의 entry_rules.yaml만 로드함.
+    전략 폴더 전체를 스캔하던 이전 방식을 폐기하여 격리성 강화.
+    """
+    rules_file = os.path.join(strat_path, "entry_rules.yaml")
+    if not os.path.exists(rules_file):
+        return {}
 
-    for folder in os.listdir(strategy_path):
-        folder_path = os.path.join(strategy_path, folder)
-        if not os.path.isdir(folder_path):
-            continue
-        
-        rules_file = os.path.join(folder_path, "entry_rules.yaml")
-        if os.path.exists(rules_file):
-            try:
-                with open(rules_file, "r", encoding="utf-8") as f:
-                    rules_data = yaml.safe_load(f)
-                    if rules_data and "entry" in rules_data:
-                        all_rules[folder] = rules_data["entry"]
-            except Exception as e:
-                print(f"[ERROR] Strategy Load Failed: {rules_file} | {str(e)}")
+    try:
+        with open(rules_file, "r", encoding="utf-8") as f:
+            rules_data = yaml.safe_load(f)
+            if rules_data and "entry" in rules_data:
+                return rules_data["entry"]
+    except Exception as e:
+        print(f"[ERROR] Strategy Load Failed: {rules_file} | {str(e)}")
     
-    return all_rules
+    return {}
 
-# [2-3] evaluate_condition (NaN 및 유효성 검증 강화)
+# [3] evaluate_condition (NaN 및 유효성 검증 유지)
 def evaluate_condition(last_row: pd.Series, condition: Dict[str, Any]) -> bool:
     field = condition.get("field")
     op_str = condition.get("op")
@@ -52,7 +49,7 @@ def evaluate_condition(last_row: pd.Series, condition: Dict[str, Any]) -> bool:
 
     left_val = last_row[field]
     
-    # [CRITICAL] NaN 탐지: 무음 통과 방지
+    # NaN 탐지: 무음 통과 방지
     if pd.isna(left_val):
         raise RuntimeError(f"NAN_VALUE_DETECTED: field '{field}'")
 
@@ -77,22 +74,25 @@ def evaluate_condition(last_row: pd.Series, condition: Dict[str, Any]) -> bool:
 
     return op_func(left_val, right_val)
 
-# [2-4] generate_signals (V31.18: No-Silent-Failure Structure)
+# [4] generate_signals (V31.18: strategy_id 사슬 보존)
 def generate_signals(
     data_bundle: Dict[str, Dict[str, Any]], 
-    strategy_path: str, 
+    strat_path: str, 
     state: Dict[str, Any], 
     system_config: Dict[str, Any]
 ) -> List[Dict[str, Any]]:
     """
     [V31.18 시그널 생성 엔진]
-    - 모든 예외(RuntimeError, Exception)에 대해 명시적 로깅 강제.
-    - 예외 발생 시 is_qualified는 False가 되나, 원인은 반드시 표준 출력에 기록됨.
+    - 'strategy_name' 필드를 삭제하고 'strategy_id'를 최우선으로 사용.
+    - 외부에서 주입된 strat_path의 규칙만 해석하여 상위 루프와 동기화.
     """
     signals = []
-    strategy_rules = load_strategy_entry_rules(strategy_path)
-    if not strategy_rules:
+    # run.py 루프에서 전달된 특정 전략의 규칙 로드
+    entry_cfg = load_strategy_entry_rules(strat_path)
+    if not entry_cfg:
         return []
+
+    conditions = entry_cfg.get("conditions", [])
 
     for symbol, bundle in data_bundle.items():
         current = bundle["current"]
@@ -101,53 +101,46 @@ def generate_signals(
         if history.empty:
             continue
             
+        # 데이터 계약 검증
         if "asset_type" not in history.columns:
-            raise RuntimeError(f"DATA_CONTRACT_VIOLATION: asset_type column missing for {symbol}")
+            raise RuntimeError(f"DATA_CONTRACT_VIOLATION: asset_type missing for {symbol}")
 
         last_row = history.iloc[-1]
+        is_qualified = True
 
-        for strategy_name, entry_cfg in strategy_rules.items():
-            conditions = entry_cfg.get("conditions", [])
-            if not conditions:
+        try:
+            for cond in conditions:
+                if not evaluate_condition(last_row, cond):
+                    is_qualified = False
+                    break
+        
+        except RuntimeError as re:
+            print(f"[INTEGRITY_SIGNAL_REJECTED] {symbol} | Path: {strat_path} | Reason: {str(re)}")
+            is_qualified = False
+            continue 
+
+        except Exception:
+            print(f"[UNEXPECTED_ENGINE_ERROR] {symbol} | Path: {strat_path}")
+            print(traceback.format_exc()) 
+            is_qualified = False
+            continue
+        
+        if is_qualified:
+            # Snapshot 유효성 검사 (실행 가격 보호)
+            if pd.isna(current.get("price")):
+                print(f"[EXECUTION_REJECTED] {symbol} | Price is NaN")
                 continue
 
-            is_qualified = True
-            try:
-                for cond in conditions:
-                    if not evaluate_condition(last_row, cond):
-                        is_qualified = False
-                        break
-            
-            # 1. 의도된 데이터 무결성 예외 (NaN 등)
-            except RuntimeError as re:
-                print(f"[INTEGRITY_SIGNAL_REJECTED] {symbol} | {strategy_name} | Reason: {str(re)}")
-                is_qualified = False
-                continue 
-
-            # 2. 예기치 못한 일반 예외 (타입 에러, 인덱스 에러 등)
-            except Exception as e:
-                # [V31.18 핵심] 예외를 무음 흡수하지 않고 트레이스백을 출력하여 개발자에게 경고
-                print(f"[UNEXPECTED_ENGINE_ERROR] {symbol} | {strategy_name}")
-                print(traceback.format_exc()) 
-                is_qualified = False
-                continue
-            
-            if is_qualified:
-                # 시그널 생성 직전 최종 실행 값(Snapshot) 유효성 검사
-                if pd.isna(current.get("price")):
-                    print(f"[EXECUTION_REJECTED] {symbol} | Price is NaN")
-                    continue
-
-                signals.append({
-                    "symbol": symbol,
-                    "side": "BUY",
-                    "price": float(current["price"]),
-                    "asset_type": str(current["asset_type"]),
-                    "strategy_name": strategy_name,
-                    "risk_per_trade": entry_cfg.get("risk_per_trade"),
-                    "stop_distance": entry_cfg.get("stop_distance")
-                })
-                # 1자산 1신호 원칙 준수
-                break
-                x = 999
+            # [V31.18] 시그널 생성 (strategy_id는 run.py 루프에서 부여됨)
+            signals.append({
+                "symbol": symbol,
+                "side": "BUY",
+                "price": float(current["price"]),
+                "asset_type": str(current["asset_type"]),
+                # strategy_id 필드는 run.py의 루프에서 strat["id"]로 덮어씌워짐
+                "strategy_id": "PENDING", 
+                "risk_per_trade": entry_cfg.get("risk_per_trade"),
+                "stop_distance": entry_cfg.get("stop_distance")
+            })
+                
     return signals

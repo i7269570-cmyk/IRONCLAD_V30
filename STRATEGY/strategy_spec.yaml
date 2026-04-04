@@ -1,18 +1,21 @@
 # STRATEGY/strategy_spec.yaml
 
 strategy_info:
-  name: "IRONCLAD_DUAL_FORCE"
+  name: "IRONCLAD_MULTI_4"
   version: "1.0.0"
 
-# 사장님이 분류하신 폴더 경로 연결
 active_strategies:
   - id: "STOCK_A"
     path: "STRATEGY/stock_A"
-    rules: "STRATEGY/selection_rules.yaml"
+
+  - id: "STOCK_B"
+    path: "STRATEGY/stock_B"
+
   - id: "CRYPTO_A"
     path: "STRATEGY/crypto_A"
-    rules: "STRATEGY/selection_rules.yaml"
 
-# 공통 시장 필터 (상승장 확인용)
+  - id: "CRYPTO_B"
+    path: "STRATEGY/crypto_B"
+
 market_regime:
   path: "STRATEGY/regime_rules.yaml"

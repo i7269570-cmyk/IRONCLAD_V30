@@ -1,5 +1,5 @@
 # ============================================================
-# IRONCLAD_V31.3 - Strategic Exit Engine (Position Contract Sync)
+# IRONCLAD_V31.18 - Strategic Exit Engine (Strict ID Filtering)
 # ============================================================
 import os
 import yaml
@@ -17,30 +17,23 @@ OPERATORS = {
 }
 
 def load_strategy_exit_rules(strategy_path: str) -> Dict[str, Any]:
-    """모든 전략 폴더에서 exit_rules.yaml을 수집하여 반환함"""
-    all_rules = {}
+    """전략 경로의 exit_rules.yaml 로드"""
     if not os.path.exists(strategy_path):
-        raise RuntimeError(f"STRATEGY_ROOT_MISSING: {strategy_path}")
+        return {}
 
-    for folder in os.listdir(strategy_path):
-        folder_path = os.path.join(strategy_path, folder)
-        if not os.path.isdir(folder_path):
-            continue
-        
-        rules_file = os.path.join(folder_path, "exit_rules.yaml")
-        if os.path.exists(rules_file):
-            try:
-                with open(rules_file, "r", encoding="utf-8") as f:
-                    rules_data = yaml.safe_load(f)
-                    if rules_data and "exit" in rules_data:
-                        all_rules[folder] = rules_data["exit"]
-            except Exception as e:
-                print(f"[ERROR] Failed to load {rules_file}: {e}")
-    
-    return all_rules
+    rules_file = os.path.join(strategy_path, "exit_rules.yaml")
+    if os.path.exists(rules_file):
+        try:
+            with open(rules_file, "r", encoding="utf-8") as f:
+                rules_data = yaml.safe_load(f)
+                if rules_data and "exit" in rules_data:
+                    return rules_data["exit"]
+        except Exception as e:
+            print(f"[ERROR] Failed to load {rules_file}: {e}")
+    return {}
 
 def evaluate_exit_condition(history: pd.DataFrame, last_row: pd.Series, condition: Dict[str, Any]) -> bool:
-    """YAML 정의 기반 청산 조건 해석기 (판단 전용: history 기반)"""
+    """YAML 정의 기반 청산 조건 해석기"""
     field = condition.get("field")
     op_str = condition.get("op")
 
@@ -65,16 +58,17 @@ def evaluate_exit_condition(history: pd.DataFrame, last_row: pd.Series, conditio
 def process_exits(
     data_bundle: Dict[str, Dict[str, Any]], 
     state: Dict[str, Any],
-    strategy_path: str
+    strat_path: str,
+    current_strategy_id: str  # 🔥 [추가] 현재 엔진이 처리 중인 전략 ID
 ) -> List[Dict[str, Any]]:
     """
-    [V31.3 청산 엔진]
-    목표: state/position 계약 필드 일치 (volume SSOT)
-    1. volume: pos_info["volume"] 필드 사용 (quantity 폐기)
-    2. 검증: "volume" 필드 누락 시 POSITION_VOLUME_MISSING 발생
+    [V31.18 청산 엔진]
+    핵심: 포지션의 strategy_id와 현재 엔진의 strategy_id가 일치할 때만 청산 판단.
     """
     exit_signals = []
-    strategy_rules = load_strategy_exit_rules(strategy_path)
+    rules = load_strategy_exit_rules(strat_path)
+    if not rules:
+        return []
     
     current_positions = state.get("positions", {})
     if not current_positions:
@@ -86,21 +80,21 @@ def process_exits(
 
         pos_info = current_positions[symbol]
         
-        # [수정] position 계약 필드 검증 및 추출 (quantity -> volume)
+        # 🔥 [핵심 필터링] 자기 전략 포지션이 아니면 스킵 (크로스 청산 방지)
+        pos_strategy_id = pos_info.get("strategy_id")
+        if pos_strategy_id != current_strategy_id:
+            continue
+
+        # [데이터 계약 검증]
         if "volume" not in pos_info:
             raise RuntimeError(f"POSITION_VOLUME_MISSING: {symbol}")
         
         current_volume = pos_info["volume"]
-        
         current = bundle["current"]
         history = bundle["history"]
         last_row = history.iloc[-1]
-        
-        strategy_name = pos_info.get("strategy_name")
-        rules = strategy_rules.get(strategy_name)
-        if not rules: 
-            continue
 
+        # 조건 해석
         is_exit_qualified = False
         for cond in rules.get("conditions", []):
             if evaluate_exit_condition(history, last_row, cond):
@@ -108,14 +102,13 @@ def process_exits(
                 break
         
         if is_exit_qualified:
-            # [규격] reconciler required_fields 충족
             exit_signals.append({
                 "symbol": symbol,
                 "action": "SELL",
                 "side": "SELL",
                 "price": float(current["price"]),
                 "asset_type": current["asset_type"],
-                "strategy_name": strategy_name,
+                "strategy_id": current_strategy_id,
                 "volume": current_volume
             })
 
