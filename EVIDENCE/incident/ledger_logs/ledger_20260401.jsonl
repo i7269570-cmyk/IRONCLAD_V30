@@ -1,0 +1,4 @@
+{"at": "2026-04-01T00:04:08.659146", "data": {"symbol": "005930.KS", "status": "FILLED", "filled_price": 167200.0, "filled_size": 26.0, "side": "BUY", "asset_type": "STOCK", "filled_at": "2026-03-31T15:04:08.658519"}}
+{"at": "2026-04-01T00:04:08.659168", "data": {"symbol": "000660.KS", "status": "FILLED", "filled_price": 807000.0, "filled_size": 5.0, "side": "BUY", "asset_type": "STOCK", "filled_at": "2026-03-31T15:04:08.658563"}}
+{"at": "2026-04-01T00:04:08.659175", "data": {"symbol": "BTC/USDT", "status": "FILLED", "filled_price": 66726.27, "filled_size": 67.0, "side": "BUY", "asset_type": "CRYPTO", "filled_at": "2026-03-31T15:04:08.658598"}}
+{"at": "2026-04-01T00:04:08.659180", "data": {"symbol": "USDC/USDT", "status": "FILLED", "filled_price": 1.0006, "filled_size": 4497301.0, "side": "BUY", "asset_type": "CRYPTO", "filled_at": "2026-03-31T15:04:08.658629"}}

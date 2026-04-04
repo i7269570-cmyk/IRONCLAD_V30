@@ -1,0 +1,10 @@
+exit:
+  take_profit: 0.015
+  stop_loss: 0.010
+  time_exit_minutes: 5
+  force_exit: true
+
+  conditions:
+    - field: close
+      op: ">="
+      ref: "bb_middle"

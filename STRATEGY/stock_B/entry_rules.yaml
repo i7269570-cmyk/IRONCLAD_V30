@@ -1,0 +1,23 @@
+entry:
+  risk_per_trade: 0.005
+  stop_distance: 0.010
+
+  conditions:
+    - field: close
+      op: ">"
+      ref: "ma20"
+      multiplier: 0.97
+
+    - field: rsi
+      op: "<"
+      value: 35
+
+    - field: close
+      op: "<="
+      ref: "bb_lower"
+      multiplier: 0.995
+
+    - field: close
+      op: ">"
+      ref: "low"
+      multiplier: 1.005

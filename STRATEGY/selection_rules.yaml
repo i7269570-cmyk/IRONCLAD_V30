@@ -1,0 +1,39 @@
+# ============================================================
+# IRONCLAD_V31.23 - Selection Rules (Final_EN_Coded)
+# ============================================================
+# ROLE: ASSET SELECTION & RANKING POLICY
+# PRINCIPLE: FIELD INTEGRITY / NO REDUNDANCY
+# ============================================================
+
+selector_rules:
+
+  # =========================
+  # Universe Definition (V31.23 Updated)
+  # [Spec] metric: value removed (Replaced by weights logic)
+  # =========================
+  universe:
+    top_n: 100            
+
+  # =========================
+  # Ranking Criteria (Final Sorting)
+  # =========================
+  ranking:
+    - field: change_rate   # Priority: Return rate
+      order: desc
+
+    - field: value         # Trading Value
+      order: desc
+
+  # =========================
+  # Final Selection Count (Per Asset Type)
+  # =========================
+  top_k:
+    stock: 2              
+    crypto: 2             
+
+  # =========================
+  # Weights Setting (Scoring Engine)
+  # =========================
+  weights:
+    change_rate: 0.6      
+    value: 0.4

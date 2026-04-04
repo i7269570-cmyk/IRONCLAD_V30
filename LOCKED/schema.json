@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "IRONCLAD System Config Schema",
+  "type": "object",
+  "required": ["system", "risk_limits", "execution_limits", "system_policy"],
+  "additionalProperties": false,
+  "properties": {
+    "system": {
+      "type": "object",
+      "required": ["system_id", "version"],
+      "additionalProperties": false,
+      "properties": {
+        "system_id": { "type": "string" },
+        "version": { "type": "string" }
+      }
+    },
+    "risk_limits": {
+      "type": "object",
+      "required": ["max_positions", "max_daily_loss_pct", "max_total_exposure_pct", "max_per_asset"],
+      "additionalProperties": false,
+      "properties": {
+        "max_positions": { "type": "integer", "minimum": 1 },
+        "max_daily_loss_pct": { "type": "number", "minimum": 0, "maximum": 1 },
+        "max_total_exposure_pct": { "type": "number", "minimum": 0, "maximum": 1 },
+        "max_per_asset": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "execution_limits": {
+      "type": "object",
+      "required": ["max_slippage_pct", "max_holding_minutes"],
+      "additionalProperties": false,
+      "properties": {
+        "max_slippage_pct": { "type": "number", "minimum": 0, "maximum": 1 },
+        "max_holding_minutes": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "system_policy": {
+      "type": "object",
+      "required": ["on_violation"],
+      "additionalProperties": false,
+      "properties": {
+        "on_violation": { "const": "SAFE_HALT" }
+      }
+    }
+  }
+}

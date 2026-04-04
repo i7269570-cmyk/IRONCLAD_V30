@@ -1,0 +1,19 @@
+# =============================================================================
+# IRONCLAD_V30.2_FINAL: UNIFIED SYSTEM CONFIG (STRICT RISK SSOT)
+# =============================================================================
+system:
+  system_id: "IRONCLAD_V30"
+  version: "1.0.0"
+
+risk_limits:
+  max_positions: 2
+  max_per_asset: 1
+  max_total_exposure_pct: 0.20
+  max_daily_loss_pct: 0.10
+
+execution_limits:
+  max_slippage_pct: 0.01          # 물리적 체결 한계선만 유지
+  max_holding_minutes: 30
+
+system_policy:
+  on_violation: "SAFE_HALT"
