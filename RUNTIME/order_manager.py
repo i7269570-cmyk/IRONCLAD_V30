@@ -64,7 +64,7 @@ def execute_orders(signals):
 
             # [V31.18] execution_results 구조 준수
             execution_item = {
-                "status": "FILLED",
+                "status": "PENDING",
                 "symbol": sig["symbol"],
                 "side": sig["side"],
                 "price": sig["price"],
