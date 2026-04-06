@@ -1,5 +1,5 @@
 # ============================================================
-# IRONCLAD_V31.19 - Final Integrated Orchestrator (Patched)
+# IRONCLAD_V31.20 - Final Integrated Orchestrator (Patched)
 # ============================================================
 import sys
 import os
@@ -46,11 +46,16 @@ def run_pipeline(paths: dict, strategy_path: str, state_path: str, evidence_path
         for symbol in data_bundle:
             data_bundle[symbol]["history"] = calculate_indicators(data_bundle[symbol]["history"])
 
-        # 3. 활성 전략 목록 로드 (ROOT -> BASE_DIR 수정)
+        # 3. [수정] 활성 전략 목록 로드 및 가드 강화
         spec_path = os.path.join(BASE_DIR, "STRATEGY", "strategy_spec.yaml")
         
         with open(spec_path, "r", encoding="utf-8") as f:
-            active_strategies = yaml.safe_load(f).get("active_strategies", [])
+            spec = yaml.safe_load(f)
+            active_strategies = spec.get("active_strategies")
+            
+        # 가드: active_strategies 키 사용 및 빈 리스트 시 즉시 중단 (원칙 9 준수)
+        if not active_strategies:
+            raise RuntimeError("NO_ACTIVE_STRATEGIES_DEFINED")
 
         fill_results = []
         exit_results = {}
@@ -59,12 +64,13 @@ def run_pipeline(paths: dict, strategy_path: str, state_path: str, evidence_path
         # 4. ENTRY PIPELINE (멀티 전략 루프)
         # ------------------------------------------------------------
         if mode == "TRADE":
-            regime_ok = evaluate_market_regime(data_bundle, strategy_path)
+            # [수정] regime_filter 데이터 계약 준수 (Dict -> List[Dict] 변환)
+            history_list = [v["history"] for v in data_bundle.values()]
+            regime_ok = evaluate_market_regime(history_list, strategy_path)
             
             if regime_ok:
                 entry_signals = []
                 for strat in active_strategies:
-                    # [V31.19] 경로 생성 로직 수정 (straROOT -> BASE_DIR)
                     abs_strat_path = os.path.join(BASE_DIR, strat["path"])
                     
                     signals = generate_signals(
@@ -103,7 +109,6 @@ def run_pipeline(paths: dict, strategy_path: str, state_path: str, evidence_path
         if mode in ["TRADE", "NO_ENTRY", "FORCE_EXIT"]:
             exit_list = []
             for strat in active_strategies:
-                # ROOT -> BASE_DIR 수정
                 abs_strat_path = os.path.join(BASE_DIR, strat["path"])
                 exits = process_exits(data_bundle, state, abs_strat_path, strat["id"])
                 exit_list.extend(exits)
@@ -125,11 +130,7 @@ def run_pipeline(paths: dict, strategy_path: str, state_path: str, evidence_path
         from exception_handler import handle_critical_error
         handle_critical_error(str(e), paths)
 
-# ============================================================
-# EXECUTION LAYER
-# ============================================================
 if __name__ == "__main__":
-    # 전역 범위 내 모든 ROOT를 BASE_DIR로 교체 완료
     paths = {
         "STRATEGY": os.path.join(BASE_DIR, "STRATEGY"),
         "STATE": os.path.join(BASE_DIR, "STATE", "state.json"),
@@ -137,12 +138,10 @@ if __name__ == "__main__":
         "RECOVERY_POLICY": os.path.join(BASE_DIR, "LOCKED", "recovery_policy.yaml")
     }
 
-    # 초기 상태 및 시스템 설정 로드
     with open(paths["STATE"], "r", encoding="utf-8") as f:
         current_state = json.load(f)
 
     with open(os.path.join(BASE_DIR, "LOCKED", "system_config.yaml"), "r", encoding="utf-8") as f:
         sys_config = yaml.safe_load(f)
 
-    # 파이프라인 가동
     run_pipeline(paths, paths["STRATEGY"], paths["STATE"], paths["EVIDENCE"], current_state, sys_config)

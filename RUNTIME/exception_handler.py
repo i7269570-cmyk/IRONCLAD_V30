@@ -8,13 +8,10 @@ logger = logging.getLogger("IRONCLAD_RUNTIME.EXCEPTION_HANDLER")
 def cancel_all_orders(paths: dict):
     """
     [SAFE_HALT] 모든 미체결 주문 취소 수행 위치.
-    실제 API 호출 없이 구조적 위치만 확보한다.
     """
     try:
-        # 주문 취소 로직 실행 위치 (Placeholder)
         logger.info("SAFE_HALT: Initiating Cancel-All Orders...")
     except Exception:
-        # 취소 실패 시에도 SAFE_HALT 프로세스는 계속 진행되어야 함
         pass
 
 
@@ -25,7 +22,7 @@ def handle_critical_error(error_context: str, paths: dict):
     """
     logger.critical(f"SAFE_HALT_TRIGGERED: {error_context}")
 
-    # [수정] 종료 전 최우선적으로 모든 주문 취소 시도
+    # 종료 전 최우선적으로 모든 주문 취소 시도
     cancel_all_orders(paths)
 
     try:
@@ -47,11 +44,13 @@ def handle_critical_error(error_context: str, paths: dict):
         if not isinstance(policy, dict):
             raise ValueError("INVALID_POLICY_SECTION")
 
-        # [수정] recovery_policy 강제 및 비정상 정책 차단 검증
-        allow_recovery = policy.get("allow_recovery")
-        restart_required = policy.get("restart_required")
+        # [V31.20 수정] SSOT(YAML) 키 명칭과 코드 일치화
+        # 원본: allow_recovery -> 수정: allow_auto_recovery
+        # 원본: restart_required -> 수정: allow_restart
+        allow_recovery = policy.get("allow_auto_recovery")
+        restart_required = policy.get("allow_restart")
 
-        # 정책 위반 및 부적절한 설정 강제 차단 (RuntimeError 발생)
+        # 정책 위반 및 부적절한 설정 강제 차단
         if allow_recovery is True:
             raise RuntimeError("RECOVERY_POLICY_VIOLATION")
 
@@ -63,11 +62,9 @@ def handle_critical_error(error_context: str, paths: dict):
             logger.info("POLICY_ENFORCED: Auto-recovery disabled. Process terminated.")
             sys.exit(1)
 
-        # 그 외 모든 정책 상황에서도 안전하게 프로세스 종료
         logger.info("POLICY_ENFORCED: Process terminated.")
         sys.exit(1)
 
     except Exception as e:
-        # RuntimeError 포함 모든 예외 발생 시 최종 중단
         logger.error(f"HANDLER_FATAL: Recovery policy unreachable or malformed. {str(e)}")
         sys.exit(1)
