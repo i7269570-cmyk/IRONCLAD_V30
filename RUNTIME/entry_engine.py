@@ -1,12 +1,15 @@
 # ============================================================
-# IRONCLAD_V31.19 - Strategic Entry Engine (Direct ID-Binding)
+# IRONCLAD_V31.22 - Strategic Entry Engine (Exception Propagation)
 # ============================================================
 import os
 import yaml
 import operator
-import traceback
 from typing import List, Dict, Any
 import pandas as pd
+import logging
+
+# [Standard] 로깅 인터페이스 설정
+logger = logging.getLogger("IRONCLAD_RUNTIME.ENTRY_ENGINE")
 
 # [1] 지원 연산자 정의 (원칙 1 준수)
 OPERATORS = {
@@ -29,7 +32,7 @@ def load_strategy_entry_rules(strat_path: str) -> Dict[str, Any]:
             if rules_data and "entry" in rules_data:
                 return rules_data["entry"]
     except Exception as e:
-        print(f"[ERROR] Strategy Load Failed: {rules_file} | {str(e)}")
+        logger.error(f"STRATEGY_LOAD_FAILED: {rules_file} | {str(e)}")
     
     return {}
 
@@ -69,18 +72,18 @@ def evaluate_condition(last_row: pd.Series, condition: Dict[str, Any]) -> bool:
 
     return op_func(left_val, right_val)
 
-# [4] 시그널 생성 엔진 (V31.19: Direct ID Injection)
+# [4] 시그널 생성 엔진 (V31.22: Exception-Ready)
 def generate_signals(
     data_bundle: Dict[str, Dict[str, Any]], 
     strat_path: str, 
-    strategy_id: str, # 🔥 [V31.19] 진짜 ID를 직접 수신
+    strategy_id: str, 
     state: Dict[str, Any], 
     system_config: Dict[str, Any]
 ) -> List[Dict[str, Any]]:
     """
-    [V31.19 시그널 생성 엔진]
-    - 'strategy_id'를 인자로 받아 생성 시점부터 바인딩 (PENDING 제거)
-    - 데이터 계약 및 판단/실행 분리 유지
+    [V31.22 시그널 생성 엔진]
+    - 예외 발생 시 'continue' 대신 'raise'를 사용하여 상위 전파 (FAIL 해소)
+    - 데이터 계약 및 SSOT 유지
     """
     signals = []
     
@@ -110,23 +113,23 @@ def generate_signals(
                     break
         
         except RuntimeError as re:
-            print(f"[INTEGRITY_SIGNAL_REJECTED] {symbol} | Path: {strat_path} | Reason: {str(re)}")
-            is_qualified = False
-            continue 
+            # 🔥 [V31.22 핵심 수정] 예외 흡수 제거
+            # 결함(NaN 등) 발생 시 조용히 넘기지 않고 상위(run.py)로 즉시 전파
+            logger.error(f"STRATEGY_INTEGRITY_FAIL: {symbol} | ID: {strategy_id} | Reason: {str(re)}")
+            raise re
 
         if is_qualified:
             exec_price = current.get("price")
             if pd.isna(exec_price) or exec_price <= 0:
-                print(f"[EXECUTION_REJECTED] {symbol} | Invalid Price: {exec_price}")
+                logger.warning(f"EXECUTION_REJECTED: {symbol} | Invalid Price: {exec_price}")
                 continue
 
-            # 🔥 [V31.19] 'PENDING'을 제거하고 인자로 받은 진짜 strategy_id 사용
             signals.append({
                 "symbol": symbol,
                 "side": "BUY",
                 "price": float(exec_price),
                 "asset_type": str(current["asset_type"]),
-                "strategy_id": strategy_id, # SSOT(Single Source of Truth) 강화
+                "strategy_id": strategy_id, 
                 "risk_per_trade": entry_cfg.get("risk_per_trade"),
                 "stop_distance": entry_cfg.get("stop_distance")
             })

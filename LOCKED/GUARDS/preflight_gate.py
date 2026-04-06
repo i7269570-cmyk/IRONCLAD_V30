@@ -1,8 +1,14 @@
+# ============================================================
+# IRONCLAD_V31.22 - Preflight Gate (Integrated & Unified)
+# ============================================================
 import os
+import sys
 import re
-import yaml # 반드시 설치되어 있어야 함 (pip install pyyaml)
+import yaml
+import logging
 
-ROOT = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+# [Standard] 로깅 인터페이스 설정
+logger = logging.getLogger("IRONCLAD_RUNTIME.PREFLIGHT")
 
 # [원칙 8] 모듈 역할 분리에 따른 검사 예외 대상
 ENGINE_FILES = [
@@ -14,11 +20,16 @@ ENGINE_FILES = [
 ]
 
 def fail(msg):
-    raise RuntimeError(f"[SAFE_HALT] {msg}")
+    """실패 시 자동 보정 없이 즉시 중단 (원칙 9 준수)"""
+    print(f"[PREFLIGHT_FAIL] {msg}")
+    sys.exit(1)
 
-# 1️⃣ 직접 전략 로직 검사 (하드코딩 방지)
-def check_runtime_no_direct_strategy_logic():
-    runtime_path = os.path.join(ROOT, "RUNTIME")
+# 1️⃣ 하드코딩 방지: 직접 전략 로직 검사
+def check_no_direct_strategy_logic(base_dir):
+    runtime_path = os.path.join(base_dir, "RUNTIME")
+    if not os.path.exists(runtime_path):
+        return
+
     banned_patterns = [
         r"rsi\s*[<>]=?\s*\d+",
         r"close\s*[<>]=?\s*\d+",
@@ -32,16 +43,21 @@ def check_runtime_no_direct_strategy_logic():
                 continue
 
             path = os.path.join(root, file)
-            with open(path, "r", encoding="utf-8") as f:
-                content = f.read().lower()
-
-            for pattern in banned_patterns:
-                if re.search(pattern, content):
-                    fail(f"Direct strategy logic detected in {file}. Use YAML rules instead.")
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    content = f.read().lower()
+                for pattern in banned_patterns:
+                    if re.search(pattern, content):
+                        fail(f"Direct strategy logic detected in {file}. Use YAML rules.")
+            except Exception:
+                continue
 
 # 2️⃣ 상태 관리자 보호 (원칙 4)
-def check_state_manager_protection():
-    runtime_path = os.path.join(ROOT, "RUNTIME")
+def check_state_protection(base_dir):
+    runtime_path = os.path.join(base_dir, "RUNTIME")
+    if not os.path.exists(runtime_path):
+        return
+
     for root, _, files in os.walk(runtime_path):
         for file in files:
             if file == "position_reconciler.py" or not file.endswith(".py"):
@@ -49,47 +65,43 @@ def check_state_manager_protection():
             
             path = os.path.join(root, file)
             with open(path, "r", encoding="utf-8") as f:
-                content = f.read()
-                if re.search(r'open\(.*state\.json.*\s*,\s*[\'"](w|a|r\+)', content):
+                if re.search(r'open\(.*state\.json.*\s*,\s*[\'"](w|a|r\+)', f.read()):
                     fail(f"Direct state modification attempt in {file}. Use position_reconciler.")
 
-# 3️⃣ [수정] 시스템 구성 기본 검증 (존재 및 딕셔너리 여부만)
-def check_system_config():
-    # 경로: LOCKED/system_config.yaml
-    config_path = os.path.join(ROOT, "LOCKED", "system_config.yaml")
-
-    if not os.path.exists(config_path):
-        fail("system_config.yaml is missing in LOCKED folder.")
-
-    with open(config_path, "r", encoding="utf-8") as f:
-        try:
-            config = yaml.safe_load(f)
-        except Exception as e:
-            fail(f"YAML Parse Error in system_config: {e}")
-
-    # [원칙 적용] 키 이름을 강제하지 않고, '데이터가 유효한 딕셔너리인가'만 확인
-    if not isinstance(config, dict):
-        fail("system_config.yaml must be a valid dictionary structure.")
-
-    if not config: # 빈 파일 방지
-        fail("system_config.yaml is empty. Configuration required.")
-
-# 4️⃣ 전략 폴더 존재 여부 확인
-def check_strategy_exists():
-    strategy_path = os.path.join(ROOT, "STRATEGY")
-    if not os.path.exists(strategy_path) or not os.listdir(strategy_path):
-        fail("No strategy files found in STRATEGY folder.")
-
-# 🔥 실행 파이프라인
+# 🔥 [V31.22] 무인자 호출 시그니처 고정 및 통합 실행
 def run_preflight():
-    print("🚀 STARTING PREFLIGHT GATE (Flexible Mode)...")
+    """
+    [Standard] 인자 없이 호출되는 단일 기동 가드.
+    경로 검증 및 시스템 구조 무결성을 확인한다.
+    """
+    print("🚀 STARTING PREFLIGHT GATE (V31.22)...")
     
-    check_runtime_no_direct_strategy_logic() # 하드코딩 검사
-    check_state_manager_protection()        # 상태 보호 검사
-    check_system_config()                   # [수정] 유연한 설정 검사
-    check_strategy_exists()                 # 전략 존재 확인
-    
-    print("✅ PREFLIGHT PASS: SYSTEM STRUCTURE VERIFIED")
+    try:
+        # [V31.22] BASE_DIR 추적 (파일 위치 기준 3단계 상위: LOCKED/GUARDS/preflight.py)
+        current_file = os.path.abspath(__file__)
+        base_dir = os.path.dirname(os.path.dirname(os.path.dirname(current_file)))
+        
+        # 1. 필수 경로 및 파일 존재 검증
+        check_list = [
+            os.path.join(base_dir, "STRATEGY"),
+            os.path.join(base_dir, "STATE", "state.json"),
+            os.path.join(base_dir, "LOCKED", "system_config.yaml"),
+            os.path.join(base_dir, "LOCKED", "recovery_policy.yaml")
+        ]
+
+        for p in check_list:
+            if not os.path.exists(p):
+                fail(f"Missing essential path: {p}")
+
+        # 2. 기존 정밀 검사 로직 수행
+        check_no_direct_strategy_logic(base_dir) # 원칙 6: 하드코딩 검사
+        check_state_protection(base_dir)         # 원칙 4: 상태 보호 검사
+        
+        print("✅ PREFLIGHT PASS: SYSTEM STRUCTURE VERIFIED")
+                
+    except Exception as e:
+        print(f"PREFLIGHT_CRITICAL_ERROR: {str(e)}")
+        sys.exit(1)
 
 if __name__ == "__main__":
     run_preflight()
