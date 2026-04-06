@@ -1,4 +1,92 @@
-.env/
+# =================================================
+# IRONCLAD_V27_CORE - Standard Git Ignore Profile
+# =================================================
+
+# --- Environment / Secrets (보안 필수) ---
 .env
-__pycache__/
+.env.*
+*.key
+*.pem
+*.secret
+keys/
+wallet/
+SECURITY/
+
+# --- Logs ---
+logs/
+*.log
+
+# --- Data Folders (실시간/연구 데이터 제외) ---
+data/
+DATA/
+raw_data/
+cache/
+datasets/
+backtest/
+ticks/
+candles/
+orderbook/
+EVIDENCE/raw_data_orderbook/
+EVIDENCE/raw_data_ticks/
+TRINITY_RESEARCH_CLEAN/  # 연구용 폴더 제외 (선택 사항)
+
+# --- Large/Binary Files ---
+*.parquet
+*.feather
+*.h5
+*.csv
+*.gz
+*.zip
+
+# --- Database ---
+*.sqlite
+*.sqlite3
+*.db
+*.db-journal
+
+# --- Python Cache (경로 상관없이 모두 차단) ---
+**/__pycache__/
 *.pyc
+*.pyo
+*.pyd
+
+# --- Virtual Environment ---
+venv/
+.venv/
+env/
+ENV/
+
+# --- Build / Temporary ---
+build/
+dist/
+tmp/
+temp/
+*.tmp
+
+# --- IDE / Editor ---
+.vscode/
+.idea/
+nppBackup/
+
+# --- OS / Backup ---
+.DS_Store
+Thumbs.db
+*.bak
+*.old
+*.backup
+*.swp
+
+# =================================================
+# SYSTEM INTEGRITY & SSOT (무결성 유지 목록)
+# =================================================
+
+# 아래 파일들은 시스템의 '헌법'이므로 절대 제외하지 않음 
+!schema.json
+!system_config.yaml
+!strategy_spec.yaml
+!LOCKED/**/schema.json
+
+# --- State Management ---
+# state.json은 실행 시마다 변경되므로 버전 관리에서 제외하는 것이 원칙입니다.
+# 만약 초기 템플릿만 저장하고 싶다면 아래 주석을 해제하세요.
+# IRONCLAD_V30/STATE/state.json

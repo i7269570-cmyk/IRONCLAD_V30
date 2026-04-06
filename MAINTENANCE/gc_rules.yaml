@@ -1,0 +1,28 @@
+rules:
+  forbid_patterns:
+    - "print("
+    - "TODO"
+    - "FIXME"
+    - "PENDING"
+    - "temp"
+    - "debug"
+    - "hardcoded"
+
+  exclude_paths:
+    - ".git"
+    - "__pycache__"
+    - ".pytest_cache"
+    - "EVIDENCE"
+    - "STATE"
+
+  scan_extensions:
+    - ".py"
+    - ".yaml"
+
+  runtime_forbid:
+    - "rsi <"
+    - "ma20 <"
+    - "ma20 >"
+    - "bb_"
+
+  max_file_lines: 500

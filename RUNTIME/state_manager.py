@@ -6,8 +6,11 @@ from typing import Dict
 def save_state(state: Dict, path: str) -> None:
     """
     atomic write 방식으로 상태 저장
-    temp → write → flush → fsync → replace
+    저장 직전 compact_context를 호출하여 허용된 필드만 필터링 (데이터 계약 준수)
     """
+    # 1. 시계열 + 스냅샷 분리: 저장 직전 필터링 수행
+    state = compact_context(state)
+    
     temp_path = f"{path}.tmp"
 
     try:
@@ -37,3 +40,21 @@ def load_state(path: str) -> Dict:
 
     except Exception as e:
         raise RuntimeError(f"State load failed: {str(e)}")
+
+
+def compact_context(state: dict) -> dict:
+    """
+    시스템 핵심 스냅샷 필드만 유지.
+    지정된 key 외의 런타임 데이터(indicator, temp data 등)는 영구 저장소에서 제외함.
+    """
+    keys_to_keep = {
+        "capital",
+        "positions",
+        "symbols",
+        "date",
+        "cooldown",
+        "last_reconciled"
+    }
+
+    # 필드 누락 시 자동 보정 금지 원칙 준수 (존재하는 값만 필터링)
+    return {k: state[k] for k in state if k in keys_to_keep}

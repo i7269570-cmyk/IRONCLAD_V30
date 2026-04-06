@@ -1,5 +1,5 @@
 # ============================================================
-# IRONCLAD_V31.18 - Order Manager (Strategy ID Integrity)
+# IRONCLAD_V31.19 - Order Manager (Risk-Gate Interlock)
 # ============================================================
 import logging
 
@@ -8,11 +8,12 @@ logger = logging.getLogger("IRONCLAD_RUNTIME.ORDER_MANAGER")
 
 def execute_orders(signals):
     """
-    입력: list[dict] (검증된 신호 리스트)
+    입력: list[dict] (Risk Manager에 의해 승인된 신호 리스트)
     출력: dict {"results": list[dict]} (체결 결과 데이터)
     기능: 
-    1. [V31.18] strategy_name을 폐기하고 strategy_id를 필수 계약 필드로 추가한다.
-    2. 신호를 수신하여 주문을 실행하고 계약된 구조의 체결 결과를 반환한다.
+    1. [V31.19] 'approved' 필드 검증 (Risk-Gate 필수 통과 확인)
+    2. [V31.18] strategy_id 무결성 유지 (ID 사슬 보존)
+    3. 실전 주문 실행 전 최종 Fail-Fast 가드 가동
     """
     
     # =========================
@@ -21,26 +22,35 @@ def execute_orders(signals):
     if not isinstance(signals, list):
         raise RuntimeError("ORDER_MANAGER_INPUT_TYPE_ERROR: signals must be list")
 
-    # [V31.18 핵심 수정] strategy_id를 필수 필드로 지정
+    # 필수 필드 정의 (strategy_id 포함)
     required_fields = [
         "symbol",
         "side",
         "price",
         "asset_type",
-        "strategy_id",   # 🔥 strategy_name -> strategy_id 변경
+        "strategy_id",
         "risk_per_trade",
         "stop_distance",
-        "volume"
+        "volume",
+        "approved"  # 🔥 V31.19 추가: 리스크 승인 여부
     ]
 
+    # =========================
+    # 🔵 Risk-Gate 및 무결성 전수 검사
+    # =========================
     for sig in signals:
         if not isinstance(sig, dict):
             raise RuntimeError("ORDER_MANAGER_INVALID_SIGNAL")
             
+        # 1. 필드 누락 검사
         for f in required_fields:
             if sig.get(f) is None:
-                # 필드 누락 시 데이터 오염 방지를 위해 즉시 중단 (Fail-Fast)
                 raise RuntimeError(f"ORDER_MANAGER_MISSING_FIELD: {f} for {sig.get('symbol')}")
+
+        # 2. 🔥 [V31.19 핵심] Risk-Gate 차단 확인
+        # Risk Manager를 거치지 않았거나, False인 경우 즉시 중단
+        if sig.get("approved") is not True:
+            raise RuntimeError(f"ORDER_BLOCKED_BY_RISK_GATE: {sig.get('symbol')} (Strategy: {sig.get('strategy_id')})")
 
     # =========================
     # 🔵 주문 실행 및 결과 생성
@@ -49,23 +59,23 @@ def execute_orders(signals):
 
     for sig in signals:
         try:
-            # 실제 주문 API 호출 위치 (ID 사슬 유지 확인)
+            # ID 사슬 유지 및 로깅
             logger.info(f"ORDER_EXECUTING: {sig['symbol']} | ID: {sig['strategy_id']} | Vol: {sig['volume']}")
 
-            # [V31.18] execution_results 구조 보강 (strategy_id 포함)
+            # [V31.18] execution_results 구조 준수
             execution_item = {
                 "status": "FILLED",
                 "symbol": sig["symbol"],
                 "side": sig["side"],
                 "price": sig["price"],
                 "asset_type": sig["asset_type"],
-                "strategy_id": sig["strategy_id"], # 🔥 ID 사슬 유지
+                "strategy_id": sig["strategy_id"], 
                 "volume": sig["volume"]
             }
             results.append(execution_item)
 
         except Exception as e:
-            # 주문 실행 중 예외 발생 시 무음 처리 없이 즉시 중단
+            # 주문 실행 중 예외 발생 시 시스템 정지 (데이터 오염 방지)
             raise RuntimeError(f"ORDER_EXECUTION_FAILED: {sig['symbol']} - {str(e)}")
 
     # =========================
@@ -74,7 +84,6 @@ def execute_orders(signals):
     if not isinstance(results, list):
         raise RuntimeError("ORDER_MANAGER_RESULTS_INVALID")
 
-    # 반드시 dict 구조로 반환하여 후속 모듈(fill_tracker 등)과의 계약 준수
     return {
         "results": results
     }
