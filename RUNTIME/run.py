@@ -50,7 +50,7 @@ def run_pipeline(paths: dict, strategy_path: str, state_path: str, evidence_path
         spec_path = os.path.join(BASE_DIR, "STRATEGY", "strategy_spec.yaml")
         
         with open(spec_path, "r", encoding="utf-8") as f:
-            active_strategies = yaml.safe_load(f).get("strategies", [])
+            active_strategies = yaml.safe_load(f).get("active_strategies", [])
 
         fill_results = []
         exit_results = {}

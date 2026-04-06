@@ -53,7 +53,8 @@ def compact_context(state: dict) -> dict:
         "symbols",
         "date",
         "cooldown",
-        "last_reconciled"
+        "last_reconciled",
+        "daily_pnl"
     }
 
     # 필드 누락 시 자동 보정 금지 원칙 준수 (존재하는 값만 필터링)
