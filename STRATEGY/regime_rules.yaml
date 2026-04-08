@@ -2,7 +2,7 @@
 # IRONCLAD_V31.3 - Market Regime Rules (Logic Sync)
 # ============================================================
 # ROLE: MARKET ENTRY BLOCKER (Regime Filter Sync)
-# PRINCIPLE: INDIVIDUAL EVALUATION / PASS ON THRESHOLD
+# PRINCIPLE: MAJORITY EVALUATION / PASS ON THRESHOLD
 # ============================================================
 
 regime_rules:
@@ -11,13 +11,13 @@ regime_rules:
   metric: "change_rate"
 
   # [2] Entry Threshold (Number)
-  # [Rule] PASS if ANY selected candidate's metric is GREATER THAN OR EQUAL TO this value.
-  # Example: -0.01 means entry is ALLOWED if at least one candidate has change_rate >= -1%.
+  # [Rule] PASS if MAJORITY of selected candidates' metric is GREATER THAN OR EQUAL TO this value.
+  # Example: -0.01 means entry is ALLOWED if 50% or more candidates have change_rate >= -1%.
   threshold: -0.01
 
 # ------------------------------------------------------------
 # OPERATIONAL IMPACT:
 # 1. Logic: Evaluate each candidate's 'metric' against 'threshold' independently.
-# 2. Condition: If (Any candidate's metric >= threshold) -> ENTRY ALLOWED (PASS).
-# 3. Restriction: Average-based filtering or multi-condition logic is strictly prohibited.
+# 2. Condition: If (Majority of candidates' metric >= threshold) -> ENTRY ALLOWED (PASS).
+# 3. Restriction: Average-based filtering or single-candidate pass logic is strictly prohibited.
 # ------------------------------------------------------------

@@ -1,10 +1,10 @@
 # ============================================================
-# IRONCLAD_V31.23 - Pre-Order Integrity Gate (Exception Ready)
+# IRONCLAD_V31.24 - Pre-Order Integrity Gate (Strict Contract)
 # ============================================================
 
 def validate_before_order(sig: dict, market_data: dict, constraints: dict, state: dict):
     """
-    [V31.23] 실행 가능성 최종 검증 게이트
+    [V31.24] 실행 가능성 최종 검증 게이트
     - 논리적 거부 시: False 반환 (정상 흐름)
     - 시스템 결함 시: Exception 발생 (SAFE_HALT 트리거)
     """
@@ -17,15 +17,18 @@ def validate_before_order(sig: dict, market_data: dict, constraints: dict, state
         required = ["price", "symbol", "side"]
         for r in required:
             if r not in sig:
-                # 필드 누락은 시스템 결함으로 간주하여 에러 발생 가능성 존재 (하단 except에서 포착)
-                raise KeyError(f"MISSING_REQUIRED_FIELD: {r}")
+                raise KeyError(f"MISSING_REQUIRED_FIELD_IN_SIG: {r}")
 
         # 2. 거래대금 체크 (유동성 검증)
         if market_data["value"] < constraints["liquidity"]["min_value"]:
             return False
 
         # 3. 거래량 비율 (이상 거래 감지)
-        if market_data.get("volume_ratio", 0) < constraints["liquidity"]["min_volume_ratio"]:
+        # 🔴 [V31.24 수정] .get 및 기본값 제거 -> 명시적 검증
+        if "volume_ratio" not in market_data:
+            raise RuntimeError("PRE_ORDER_CHECK_FAULT: 'volume_ratio' missing in market_data.")
+            
+        if market_data["volume_ratio"] < constraints["liquidity"]["min_volume_ratio"]:
             return False
 
         # 4. 스프레드 (시장가 진입 리스크)
@@ -48,14 +51,23 @@ def validate_before_order(sig: dict, market_data: dict, constraints: dict, state
 
         # 7. 동일 자산군 금지 (상관관계 리스크 관리)
         if constraints["safety"]["forbid_same_asset_group"]:
-            asset_group = sig.get("asset_group")
+            # 🔴 [V31.24 수정] sig.get("asset_group") 제거 -> 직접 참조
+            if "asset_group" not in sig:
+                raise RuntimeError("PRE_ORDER_CHECK_FAULT: 'asset_group' missing in sig.")
+            
+            asset_group = sig["asset_group"]
             for pos in state["positions"].values():
-                if pos.get("asset_group") == asset_group:
+                # 포지션 데이터 내 asset_group 존재 여부도 엄격히 확인
+                if "asset_group" not in pos:
+                    raise RuntimeError(f"PRE_ORDER_CHECK_FAULT: 'asset_group' missing in state position.")
+                
+                if pos["asset_group"] == asset_group:
                     return False
 
         return True
 
     except Exception as e:
-        # 🔴 [V31.23 핵심] 예외를 절대 삼키지 않고 상위(run.py)로 전파
-        # 이로 인해 데이터 결함 발생 시 즉시 SAFE_HALT가 작동함
+        # 모든 예외는 상위(run.py)로 전파되어 SAFE_HALT 트리거
+        if isinstance(e, (RuntimeError, KeyError)):
+            raise e
         raise RuntimeError(f"PRE_ORDER_CHECK_CRITICAL_FAIL: {str(e)}")
