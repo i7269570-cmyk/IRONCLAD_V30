@@ -3,11 +3,36 @@
 # ============================================================
 import os
 import yaml
+import json
 import logging
 from typing import List, Dict, Any
 
 # [Standard] Logging interface
 logger = logging.getLogger("IRONCLAD_RUNTIME.SELECTOR")
+
+def save_selected_symbols(final_selection: List[Dict[str, Any]]):
+    """
+    [V31.24 추가] 선택된 심볼을 콘솔에 출력하고 파일로 저장
+    """
+    try:
+        symbols = [item["symbol"] for item in final_selection]
+
+        print("\n[SELECTED SYMBOLS]")
+        for s in symbols:
+            print(f"- {s}")
+
+        # STATE 디렉토리 보장
+        os.makedirs("STATE", exist_ok=True)
+
+        # 원자적 기록 (JSON)
+        with open("STATE/selected_symbols.json", "w", encoding="utf-8") as f:
+            json.dump(symbols, f, indent=2, ensure_ascii=False)
+            
+        logger.info(f"SELECTOR_SYMBOLS_SAVED: {len(symbols)} items")
+
+    except Exception as e:
+        # 결함 은폐 금지 원칙 준수
+        raise RuntimeError(f"SELECTOR_SAVE_FAILED: {str(e)}")
 
 def select_candidates(data: List[Dict[str, Any]], strategy_path: str) -> List[Dict[str, Any]]:
     """
@@ -54,7 +79,6 @@ def select_candidates(data: List[Dict[str, Any]], strategy_path: str) -> List[Di
         top_n = u_cfg["top_n"]
 
         def calculate_score(x: Dict[str, Any]) -> float:
-            # [V31.13] Mandatory Field Check
             if "change_rate" not in x:
                 raise RuntimeError(f"MISSING_FIELD: change_rate {x.get('symbol', 'UNKNOWN')}")
             if "value" not in x:
@@ -84,7 +108,7 @@ def select_candidates(data: List[Dict[str, Any]], strategy_path: str) -> List[Di
         # --------------------------------------------------------
         # [V31.24] Top_K Validation (No Default / No get)
         # --------------------------------------------------------
-        # 🔥 [수정] get(..., 0) 제거 -> 필드 누락 시 즉시 RuntimeError
+        # 🔥 필드 누락 시 즉시 RuntimeError (get 제거됨)
         if "stock" not in topk_cfg:
             raise RuntimeError("MISSING_TOPK_CONFIG: stock")
 
@@ -110,6 +134,9 @@ def select_candidates(data: List[Dict[str, Any]], strategy_path: str) -> List[Di
                     crypto_count += 1
             else:
                 raise RuntimeError(f"SELECTOR_UNKNOWN_ASSET_TYPE: {a_type}")
+
+        # 🔴 [V31.24 추가] 선택 결과 저장 및 출력 호출
+        save_selected_symbols(final_candidates)
 
         logger.info(f"SELECTOR_SUCCESS: Stock({stock_count}), Crypto({crypto_count})")
         return final_candidates
