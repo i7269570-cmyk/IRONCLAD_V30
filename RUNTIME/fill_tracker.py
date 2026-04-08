@@ -50,7 +50,7 @@ def track_fills(order_results, state):
             raise RuntimeError(f"ORDER_FAILED: {status} | {symbol}") #
 
         # [V31.18] FILLED 상태 데이터 정제 및 ID 전달
-        if status == "FILLED":
+        if status in ["FILLED", "PENDING"]:
             if symbol in positions:
                 raise RuntimeError(f"FILL_DUPLICATE_POSITION: {symbol}") #
 

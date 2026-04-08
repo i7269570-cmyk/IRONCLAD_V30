@@ -60,7 +60,7 @@ def evaluate_market_regime(market_data: List[Dict[str, Any]], strategy_path: str
 
         # [판단] 모든 데이터가 유효하며, 과반수 이상의 데이터가 threshold를 통과해야 승인 (전략적 판단 기준)
         # ※ 구체적인 통과 비율에 대한 명시적 수정 요청이 없으므로, 유효 데이터 존재 시 통과 여부 기록
-        if pass_count > 0:
+        if pass_count >= (total_count // 2 + 1):
             logger.info(f"REGIME_FILTER: PASS (Metric: {metric}, Passed: {pass_count}/{total_count})")
             return True
         

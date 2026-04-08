@@ -1,0 +1,17 @@
+execution_constraints:
+  slippage:
+    max_slippage_pct: 0.003
+
+  latency:
+    max_order_delay_ms: 500
+
+  liquidity:
+    min_value: 100000000        # 거래대금 최소
+    min_volume_ratio: 1.5
+
+  spread:
+    max_spread_pct: 0.002
+
+  safety:
+    forbid_duplicate_position: true
+    forbid_same_asset_group: true

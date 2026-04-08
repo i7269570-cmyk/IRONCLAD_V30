@@ -1,10 +1,13 @@
-# RUNTIME/audit_job.py
-
+# ============================================================
+# IRONCLAD_V31.23 - Audit Job (Strict Path Signature)
+# ============================================================
+import os
 from state_manager import load_state
 from exchange_adapter import get_positions
 
-
 def compare_state_vs_exchange(state, exchange_positions):
+    """상태 파일과 거래소 간 포지션 수량 검증"""
+    # 🔴 [V31.23] state_manager에서 보정을 제거했으므로, 여기서 명시적 검증 수행
     if "positions" not in state:
         raise RuntimeError("SAFE_HALT: state missing 'positions'")
 
@@ -24,10 +27,8 @@ def compare_state_vs_exchange(state, exchange_positions):
 
         state_qty = pos["qty"]
 
-        if symbol not in exchange_positions:
-            ex_qty = 0
-        else:
-            ex_qty = exchange_positions[symbol]
+        # 거래소 데이터와 비교
+        ex_qty = exchange_positions.get(symbol, 0)
 
         if abs(state_qty - ex_qty) > 1e-6:
             mismatches.append({
@@ -38,11 +39,16 @@ def compare_state_vs_exchange(state, exchange_positions):
 
     return mismatches
 
-
-def run_audit():
+def run_audit(paths: dict):
+    """
+    정기 무결성 검사 실행
+    - load_state 호출 시 반드시 경로 전달 (규칙 준수)
+    """
     print("=== AUDIT START ===")
 
-    state = load_state()
+    # 🔴 [V31.23 핵심] 시그니처 불일치 해결: paths["STATE"] 전달
+    # 파일 부재 시 state_manager 내부에서 RuntimeError(SAFE_HALT) 발생
+    state = load_state(paths["STATE"])
     exchange_positions = get_positions()
 
     mismatches = compare_state_vs_exchange(state, exchange_positions)
@@ -51,10 +57,16 @@ def run_audit():
         print("❌ MISMATCH DETECTED")
         for item in mismatches:
             print(item)
+        # 데이터 불일치 시 즉시 SAFE_HALT 트리거
         raise RuntimeError("SAFE_HALT: INTEGRITY VIOLATION")
 
     print("✅ AUDIT PASS")
 
-
 if __name__ == "__main__":
-    run_audit()
+    # 실행 시 필요한 경로 구조 정의 (run.py와 동일 계층)
+    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    paths = {
+        "STATE": os.path.join(BASE_DIR, "STATE", "state.json")
+    }
+    
+    run_audit(paths)
