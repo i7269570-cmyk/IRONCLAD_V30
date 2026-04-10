@@ -1,12 +1,13 @@
 execution_constraints:
   slippage:
-    max_slippage_pct: 0.003
+    order_max_slippage_pct: 0.003
 
   latency:
     max_order_delay_ms: 500
 
   liquidity:
-    min_value: 100000000        # 거래대금 최소
+    # [수정] 최소 거래대금 기준 상향 조정 (300억) [cite: 2026-03-17]
+    min_value: 30000000000        
     min_volume_ratio: 1.5
 
   spread:

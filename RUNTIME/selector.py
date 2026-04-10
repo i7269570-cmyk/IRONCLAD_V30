@@ -1,5 +1,5 @@
 # ============================================================
-# IRONCLAD_V31.24 - Selector Integrity (Zero-Tolerance Top_K)
+# IRONCLAD_V31.33 - Data Integrity & Contract-Aligned Selector
 # ============================================================
 import os
 import yaml
@@ -7,141 +7,105 @@ import json
 import logging
 from typing import List, Dict, Any
 
-# [Standard] Logging interface
+# [1] BASE_DIR 정의: 상대경로 의존성 제거를 위한 절대경로 기준점 설정
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 logger = logging.getLogger("IRONCLAD_RUNTIME.SELECTOR")
-
-def save_selected_symbols(final_selection: List[Dict[str, Any]]):
-    """
-    [V31.24 추가] 선택된 심볼을 콘솔에 출력하고 파일로 저장
-    """
-    try:
-        symbols = [item["symbol"] for item in final_selection]
-
-        print("\n[SELECTED SYMBOLS]")
-        for s in symbols:
-            print(f"- {s}")
-
-        # STATE 디렉토리 보장
-        os.makedirs("STATE", exist_ok=True)
-
-        # 원자적 기록 (JSON)
-        with open("STATE/selected_symbols.json", "w", encoding="utf-8") as f:
-            json.dump(symbols, f, indent=2, ensure_ascii=False)
-            
-        logger.info(f"SELECTOR_SYMBOLS_SAVED: {len(symbols)} items")
-
-    except Exception as e:
-        # 결함 은폐 금지 원칙 준수
-        raise RuntimeError(f"SELECTOR_SAVE_FAILED: {str(e)}")
 
 def select_candidates(data: List[Dict[str, Any]], strategy_path: str) -> List[Dict[str, Any]]:
     """
-    입력: data(list[dict]), strategy_path(str)
-    출력: list[dict]
     기능: 
-    1. top_k 설정 내 'stock', 'crypto' 필드 누락 시 즉시 RuntimeError를 발생시킨다.
-    2. get(..., 0)과 같은 자동 보정(Default Value) 로직을 전면 폐기한다.
+    1. 데이터 구조 {symbol, current, history}를 유지하며 필터링 및 랭킹 수행.
+    2. close_above_ma20_ratio를 통한 시장 전체 진단 (Market Check).
+    3. market_adapter가 즉시 사용할 수 있는 원본 구조의 최정예 Top-K 반환.
     """
-
     if not data:
         return []
 
     try:
+        # [1] 규칙 로드 (SSOT 준수)
         rules_file = os.path.join(strategy_path, "selection_rules.yaml")
-
         if not os.path.exists(rules_file):
             raise RuntimeError(f"SELECTOR_RULES_MISSING: {rules_file}")
 
         with open(rules_file, 'r', encoding='utf-8') as f:
-            config = yaml.safe_load(f)
+            rules = yaml.safe_load(f)["selector_rules"]
 
-        if "selector_rules" not in config:
-            raise RuntimeError("SELECTOR_CONFIG_ERROR: 'selector_rules' root missing")
+        # [2] 시장 통계 필드 계산 (close_above_ma20_ratio)
+        valid_data = [d for d in data if "history" in d and not d["history"].empty]
+        if not valid_data:
+            raise RuntimeError("SELECTOR_STAT_ERROR: No history data available for statistics")
 
-        rules = config["selector_rules"]
+        above_ma20_count = 0
+        for d in valid_data:
+            last_row = d["history"].iloc[-1]
+            if last_row["close"] > last_row["ma20"]:
+                above_ma20_count += 1
         
-        # [Standard] Section Presence Validation
-        required_sections = ["universe", "ranking", "top_k", "weights"]
-        for section in required_sections:
-            if section not in rules:
-                raise RuntimeError(f"SELECTOR_CONFIG_ERROR: '{section}' section missing")
+        ma20_ratio = above_ma20_count / len(valid_data)
+        logger.info(f"MARKET_STAT: close_above_ma20_ratio = {ma20_ratio:.2f}")
 
-        u_cfg = rules["universe"]
-        ranking_cfg = rules["ranking"]
-        topk_cfg = rules["top_k"]
-        weights_cfg = rules["weights"]
+        # [3] Market Check (진입 차단 로직)
+        m_check = rules["market_check"]
+        if m_check["enabled"]:
+            m_cond = m_check["condition"]
+            if ma20_ratio < m_cond["value"]:
+                logger.info(f"SELECTOR: BLOCKED (Market integrity fail: {ma20_ratio:.2f} < {m_cond['value']})")
+                return [] 
 
-        # [Standard] Weights Validation (No Default)
-        if "change_rate" not in weights_cfg or "value" not in weights_cfg:
-            raise RuntimeError("SELECTOR_CONFIG_ERROR: weights must include 'change_rate' and 'value'")
+        # [4] 1차 필터링 (Liquidity & Volatility)
+        f_cfg = rules["filter"]
+        
+        liq_sorted = sorted(valid_data, key=lambda x: x["current"].get("value", 0), reverse=True)
+        liq_candidates = liq_sorted[:f_cfg["liquidity"]["top_n"]]
+        
+        vol_sorted = sorted(liq_candidates, key=lambda x: x["history"].iloc[-1].get("atr_percent", 0), reverse=True)
+        intermediate = vol_sorted[:f_cfg["volatility"]["top_n"]]
 
-        # 1. Universe Scoring (Strict Validation)
-        top_n = u_cfg["top_n"]
-
+        # [5] 랭킹 및 가중치 점수 계산
+        rank_weights = {item["field"]: item["weight"] for item in rules["ranking"]}
+        
         def calculate_score(x: Dict[str, Any]) -> float:
-            if "change_rate" not in x:
-                raise RuntimeError(f"MISSING_FIELD: change_rate {x.get('symbol', 'UNKNOWN')}")
-            if "value" not in x:
-                raise RuntimeError(f"MISSING_FIELD: value {x.get('symbol', 'UNKNOWN')}")
+            score = 0.0
+            last_row = x["history"].iloc[-1]
+            curr_info = x["current"]
             
-            return (
-                x["change_rate"] * weights_cfg["change_rate"] + 
-                x["value"] * weights_cfg["value"]
-            )
+            for field, weight in rank_weights.items():
+                if field in last_row:
+                    val = last_row[field]
+                elif field in curr_info:
+                    val = curr_info[field]
+                else:
+                    raise RuntimeError(f"SELECTOR_FIELD_MISSING: {field} for {x.get('symbol')}")
+                score += float(val) * weight
+            return score
 
-        universe_sorted = sorted(data, key=calculate_score, reverse=True)
-        intermediate_candidates = universe_sorted[:top_n]
+        # [6] 최종 선발 및 반환 (구조 유지)
+        final_sorted = sorted(intermediate, key=calculate_score, reverse=True)
+        final_top_k = rules["selection"]["final_top_k"]
+        final_selection = final_sorted[:final_top_k]
 
-        # 2. Ranking (Strict Field Validation)
-        final_sorted = intermediate_candidates
-        for rank_rule in reversed(ranking_cfg):
-            field = rank_rule["field"]
-            order = rank_rule["order"]
-            is_reverse = True if order == "desc" else False
-            
-            for item in final_sorted:
-                if field not in item:
-                    raise RuntimeError(f"SELECTOR_FIELD_MISSING: {field}")
-
-            final_sorted = sorted(final_sorted, key=lambda x: x[field], reverse=is_reverse)
-
-        # --------------------------------------------------------
-        # [V31.24] Top_K Validation (No Default / No get)
-        # --------------------------------------------------------
-        # 🔥 필드 누락 시 즉시 RuntimeError (get 제거됨)
-        if "stock" not in topk_cfg:
-            raise RuntimeError("MISSING_TOPK_CONFIG: stock")
-
-        if "crypto" not in topk_cfg:
-            raise RuntimeError("MISSING_TOPK_CONFIG: crypto")
-
-        stock_limit = topk_cfg["stock"]
-        crypto_limit = topk_cfg["crypto"]
-
-        final_candidates = []
-        stock_count = 0
-        crypto_count = 0
-
-        for item in final_sorted:
-            a_type = item.get("asset_type")
-            if a_type == "STOCK":
-                if stock_count < stock_limit:
-                    final_candidates.append(item)
-                    stock_count += 1
-            elif a_type == "CRYPTO":
-                if crypto_count < crypto_limit:
-                    final_candidates.append(item)
-                    crypto_count += 1
-            else:
-                raise RuntimeError(f"SELECTOR_UNKNOWN_ASSET_TYPE: {a_type}")
-
-        # 🔴 [V31.24 추가] 선택 결과 저장 및 출력 호출
-        save_selected_symbols(final_candidates)
-
-        logger.info(f"SELECTOR_SUCCESS: Stock({stock_count}), Crypto({crypto_count})")
-        return final_candidates
+        # 결과 저장 및 로그
+        _save_selected_symbols(final_selection)
+        logger.info(f"SELECTOR_SUCCESS: Selected {len(final_selection)} symbols")
+        
+        return final_selection
 
     except Exception as e:
-        if isinstance(e, RuntimeError):
-            raise e
-        raise RuntimeError(f"SELECTOR_FAILURE: {str(e)}")
+        logger.error(f"SELECTOR_CRITICAL_FAILURE: {str(e)}")
+        raise RuntimeError(f"SELECTOR_HALT: {str(e)}")
+
+def _save_selected_symbols(final_selection: List[Dict[str, Any]]):
+    """
+    선택된 심볼 저장
+    - [수정] 절대경로 계약 준수: BASE_DIR 기반으로 STATE 경로 명시
+    """
+    symbols = [item["symbol"] for item in final_selection]
+    
+    # [수정] 상대경로 의존성 제거
+    state_dir = os.path.join(BASE_DIR, "STATE")
+    os.makedirs(state_dir, exist_ok=True)
+    
+    file_path = os.path.join(state_dir, "selected_symbols.json")
+    with open(file_path, "w", encoding="utf-8") as f:
+        json.dump(symbols, f, indent=2, ensure_ascii=False)

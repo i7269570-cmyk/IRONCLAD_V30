@@ -32,6 +32,10 @@ def validate_before_order(sig: dict, market_data: dict, constraints: dict, state
             return False
 
         # 4. 스프레드 (시장가 진입 리스크)
+        # bid/ask 데이터 존재 여부 확인 로직 (명시적 참조)
+        if "bid" not in market_data or "ask" not in market_data:
+             raise RuntimeError("PRE_ORDER_CHECK_FAULT: 'bid/ask' missing in market_data.")
+
         bid = market_data["bid"]
         ask = market_data["ask"]
         spread_pct = (ask - bid) / price
@@ -40,8 +44,9 @@ def validate_before_order(sig: dict, market_data: dict, constraints: dict, state
             return False
 
         # 5. 슬리피지 예상 (체결가 보호)
+        # [수정] execution_constraints.yaml 키 명칭 변경에 따른 정렬 (order_max_slippage_pct)
         expected_slippage = abs(ask - price) / price
-        if expected_slippage > constraints["slippage"]["max_slippage_pct"]:
+        if expected_slippage > constraints["slippage"]["order_max_slippage_pct"]:
             return False
 
         # 6. 중복 포지션 금지 (동일 심볼 제한)

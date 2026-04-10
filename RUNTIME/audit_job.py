@@ -7,7 +7,7 @@ from exchange_adapter import get_positions
 
 def compare_state_vs_exchange(state, exchange_positions):
     """상태 파일과 거래소 간 포지션 수량 검증"""
-    # 🔴 [V31.23] state_manager에서 보정을 제거했으므로, 여기서 명시적 검증 수행
+    # [V31.23] state_manager에서 보정을 제거했으므로, 여기서 명시적 검증 수행
     if "positions" not in state:
         raise RuntimeError("SAFE_HALT: state missing 'positions'")
 
@@ -22,19 +22,21 @@ def compare_state_vs_exchange(state, exchange_positions):
         if not isinstance(pos, dict):
             raise RuntimeError(f"SAFE_HALT: invalid position structure -> {symbol}")
 
-        if "qty" not in pos:
-            raise RuntimeError(f"SAFE_HALT: missing qty in state position -> {symbol}")
+        # [수정] qty 사용 금지, 모든 수량 검증은 volume 필드 기준
+        if "volume" not in pos:
+            raise RuntimeError(f"SAFE_HALT: missing volume in state position -> {symbol}")
 
-        state_qty = pos["qty"]
+        state_volume = pos["volume"]
 
         # 거래소 데이터와 비교
-        ex_qty = exchange_positions.get(symbol, 0)
+        ex_volume = exchange_positions.get(symbol, 0)
 
-        if abs(state_qty - ex_qty) > 1e-6:
+        # 수량 비교 (부동소수점 오차 감안)
+        if abs(state_volume - ex_volume) > 1e-6:
             mismatches.append({
                 "symbol": symbol,
-                "state_qty": state_qty,
-                "exchange_qty": ex_qty
+                "state_volume": state_volume,
+                "exchange_volume": ex_volume
             })
 
     return mismatches
@@ -46,7 +48,7 @@ def run_audit(paths: dict):
     """
     print("=== AUDIT START ===")
 
-    # 🔴 [V31.23 핵심] 시그니처 불일치 해결: paths["STATE"] 전달
+    # [V31.23 핵심] 시그니처 불일치 해결: paths["STATE"] 전달
     # 파일 부재 시 state_manager 내부에서 RuntimeError(SAFE_HALT) 발생
     state = load_state(paths["STATE"])
     exchange_positions = get_positions()

@@ -1,21 +1,80 @@
-# STRATEGY/strategy_spec.yaml
+# ============================================================
+# IRONCLAD_V31.30 - Strategy Specification (Merged SSOT)
+# ============================================================
 
 strategy_info:
   name: "IRONCLAD_MULTI_4"
-  version: "1.0.0"
+  version: "1.0.2"
 
-active_strategies:
-  - id: "STOCK_A"
-    path: "STRATEGY/stock_A"
+# 1. REGIME CONTROL (통합 관제 섹션)
+regime:
+  current_state: "NO_TRADE"
 
-  - id: "STOCK_B"
-    path: "STRATEGY/stock_B"
+  evaluation_order:
+    - TREND
+    - RANGE
+    - NO_TRADE
 
-  - id: "CRYPTO_A"
-    path: "STRATEGY/crypto_A"
+  # [NEW] regime_rules.yaml에서 통합된 글로벌 진입 필터
+  # Majority Evaluation을 위한 기준값 정의
+  global_filter:
+    metric: "change_rate"
+    threshold: -0.01  # -1% 이상인 종목이 과반수일 때만 진입 허용
 
-  - id: "CRYPTO_B"
-    path: "STRATEGY/crypto_B"
+  conditions:
+    TREND:
+      all:
+        - { field: "close", op: ">", ref: "ma200", multiplier: 1.0 }
+        - { field: "ma20", op: ">", ref: "ma50", multiplier: 1.0 }
+        - { field: "adx", op: ">", value: 25 }
+    
+    RANGE:
+      all:
+        - { field: "adx", op: "<", value: 20 }
+        - { field: "atr_percent", op: "<", value: 1.5 }
+        - { field: "disparity_abs", op: "<=", value: 0.005 }
 
-market_regime:
-  path: "STRATEGY/regime_rules.yaml"
+    NO_TRADE:
+      fallback: true
+
+  # [추가 1] persistence 섹션 삽입
+  persistence:
+    TREND:
+      min_hold_bars: 8
+    RANGE:
+      min_hold_bars: 6
+    NO_TRADE:
+      min_hold_bars: 4
+
+  switch:
+    TREND:
+      strategy: "TURTLE"
+      allow_entry: true
+    RANGE:
+      strategy: "DISPARITY"
+      allow_entry: true
+    NO_TRADE:
+      strategy: "NONE"
+      allow_entry: false
+
+# 2. STRATEGY DEFINITIONS
+strategies:
+  TURTLE:
+    risk_per_trade: 0.01
+    stop_distance: 2.0
+    entry_conditions:
+      all:
+        - { field: "close", op: ">=", ref: "highest_20", multiplier: 1.0 }
+    exit_conditions:
+      any:
+        - { field: "close", op: "<=", ref: "lowest_10", multiplier: 1.0 }
+
+  DISPARITY:
+    risk_per_trade: 0.01
+    stop_distance: 1.5
+    entry_conditions:
+      all:
+        - { field: "disparity_20", op: "<=", value: 95 }
+    exit_conditions:
+      any:
+        - { field: "disparity_20", op: ">=", value: 102 }

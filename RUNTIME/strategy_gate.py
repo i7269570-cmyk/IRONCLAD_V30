@@ -26,7 +26,3 @@ def filter_by_strategy(market_data: list, strategy_path: str):
     candidates = df.nlargest(50, 'value')
 
     return candidates.to_dict('records')
-    
-    
-    
-    raise RuntimeError("TEST FAIL")
