@@ -1,5 +1,5 @@
 # ============================================================
-# IRONCLAD_V31.23 - Ledger Writer (Strategy ID Integrity)
+# IRONCLAD_V4.10 - Isolated Ledger Writer (Strict Path)
 # ============================================================
 import os
 import json
@@ -11,16 +11,27 @@ logger = logging.getLogger("IRONCLAD_RUNTIME.LEDGER_WRITER")
 
 def record_to_ledger(data: Dict[str, Any], evidence_path: str):
     """
-    목표: 진입/청산 기록 시 strategy_id 보존 및 누락 방지
+    [V4.10] 자산군별(STOCK/COIN) 경로 완전 격리 기록
+    - 주입받은 evidence_path를 SSOT로 사용하여 기록 위치 결정
     """
     # 1. 입력 구조 및 타입 검증
     if not isinstance(data, dict):
         raise RuntimeError("LEDGER_INPUT_INVALID")
 
-    fills = data.get("fills", [])
-    exits = data.get("exits", {})
+    # 🔴 [V4.10 수정] .get() 제거 및 명시적 키 검사 (No-Default 원칙)
+    if "fills" not in data or "exits" not in data:
+        raise RuntimeError("LEDGER_INPUT_SCHEMA_ERROR: 'fills' or 'exits' missing")
 
+    fills = data["fills"]
+    exits = data["exits"]
+
+    # 🔴 [V4.10 핵심] 주입된 경로를 절대 신뢰 (분리 실행의 핵심)
+    # evidence_path는 run_stock.py 혹은 run_coin.py에서 결정되어 넘어옴
     final_path = os.path.join(evidence_path, "trade_ledger.jsonl")
+    
+    # 해당 경로 폴더가 없으면 생성 (STOCK/COIN 폴더 격리 보장)
+    os.makedirs(evidence_path, exist_ok=True)
+
     all_records = []
 
     # 2. 기존 기록 로드 (Atomic Read)
@@ -34,18 +45,15 @@ def record_to_ledger(data: Dict[str, Any], evidence_path: str):
         except Exception as e:
             raise RuntimeError(f"LEDGER_READ_FAILURE: {str(e)}")
 
-    # 3. 신규 기록 생성 (strategy_id 보존 집중)
+    # 3. 신규 기록 생성 (기존 검증 로직 유지)
     new_records = []
     timestamp = datetime.now().isoformat()
 
-    # [FILL 데이터 처리] - 진입 시 strategy_id 필수 검증
+    # [FILL 데이터 처리]
     for fill in fills:
-        # 🔴 [V31.23 핵심] strategy_id 포함 필수 필드 존재 여부 엄격 검사
-        # 하드코딩이나 빈 문자열 삽입 없이, 입력된 sig/fill의 값을 그대로 보존
         required_keys = ["symbol", "side", "price", "asset_type", "strategy_id", "volume"]
         for key in required_keys:
             if key not in fill or fill[key] is None:
-                # 원칙: 억지 생성 금지. 누락 시 즉시 에러 발생시켜 상위에서 처리 유도
                 raise RuntimeError(f"MISSING_FIELD_IN_FILL: {key}")
         
         new_records.append({
@@ -55,11 +63,11 @@ def record_to_ledger(data: Dict[str, Any], evidence_path: str):
             "side": fill["side"],
             "price": fill["price"],
             "asset_type": fill["asset_type"],
-            "strategy_id": fill["strategy_id"], # 주입된 ID 보존
+            "strategy_id": fill["strategy_id"],
             "volume": fill["volume"]
         })
 
-    # [EXIT 데이터 처리] - 청산 시 strategy_id 필수 검증
+    # [EXIT 데이터 처리]
     for symbol, exit_info in exits.items():
         required_keys = ["action", "side", "price", "asset_type", "strategy_id", "volume"]
         for key in required_keys:
@@ -74,11 +82,11 @@ def record_to_ledger(data: Dict[str, Any], evidence_path: str):
             "side": exit_info["side"],
             "price": exit_info["price"],
             "asset_type": exit_info["asset_type"],
-            "strategy_id": exit_info["strategy_id"], # 주입된 ID 보존
+            "strategy_id": exit_info["strategy_id"],
             "volume": exit_info["volume"]
         })
 
-    # 4. Atomic Write 실행 (원자적 교체 방식 유지)
+    # 4. Atomic Write 실행 (원자적 교체 유지)
     all_records.extend(new_records)
     temp_path = f"{final_path}.tmp"
 
@@ -90,7 +98,7 @@ def record_to_ledger(data: Dict[str, Any], evidence_path: str):
             os.fsync(f.fileno())
 
         os.replace(temp_path, final_path)
-        logger.info(f"LEDGER_WRITER_SUCCESS: Records preserved. Count: {len(all_records)}")
+        logger.info(f"LEDGER_WRITER_SUCCESS: {evidence_path} preserved.")
 
     except Exception as e:
         if os.path.exists(temp_path):

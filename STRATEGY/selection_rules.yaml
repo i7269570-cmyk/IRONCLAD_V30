@@ -1,5 +1,5 @@
 # ============================================================
-# IRONCLAD_V31.32 - High-End Selector Rules (Final)
+# IRONCLAD_V31.33 - High-End Selector Rules (Integrity Optimized)
 # ============================================================
 
 selector_rules:
@@ -30,15 +30,16 @@ selector_rules:
       order: "desc"         # 내림차순 정렬
       weight: 0.4           # 가중치 40%
 
-  # [4] 엔진 투입 수 (최정예 선발)
+  # [4] 엔진 투입 수 (최종 선정 개수 - SSOT)
   selection:
-    final_top_k: 10         # 최종 10개 종목만 분석 엔진으로 전달
+    final_top_k: 5          # 전략 엔진으로 전달할 최종 종목 수 (유일 참조점)
 
-  # [5] 시장 건전성 체크 (Majority Evaluation)
-  market_check:
-    enabled: true           # 활성화
-    condition:
-      # 전체 후보군 중 20일선 위에 있는 종목이 50% 이상일 때만 진입
-      field: "close_above_ma20_ratio" 
-      op: ">="              # 이상
-      value: 0.5            # 50% 기준
+  # [5] 유니버스 생성 규칙
+  universe:
+    metric: value
+    top_n: 100
+
+  # [6] 지표별 가중치 설정
+  weights:
+    rsi: 1.0
+    value: 1.0

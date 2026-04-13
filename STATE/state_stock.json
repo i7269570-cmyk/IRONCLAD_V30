@@ -6,16 +6,8 @@
   },
   "positions": {},
   "symbols": {
-    "stock": [
-      "A",
-      "B",
-      "C"
-    ],
-    "crypto": [
-      "A",
-      "B",
-      "C"
-    ]
+    "stock": ["A", "B", "C"],
+    "crypto": []
   },
   "date": "2026-04-01",
   "cooldown": {},

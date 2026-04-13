@@ -1,27 +1,21 @@
 # ============================================================
-# IRONCLAD_V31.34 - Central Indicator Calculator (Final)
+# IRONCLAD_V31.35 - Central Indicator Calculator (Final)
 # ============================================================
 import pandas as pd
 import numpy as np
 
 def calculate_indicators(df):
     """
-    [V31.34 수정]
-    1. 필수 컬럼 검증 완전성 확보 (7대 필수 컬럼 전수 조사)
-    2. 데이터 계약(Data Contract) 위반 시 즉시 HALT
-    3. market_adapter 요구 지표 전수 생성 (ma, atr, disparity, adx 등)
-    4. TURTLE 및 DISPARITY 전략 필수 지표 강제 계산 (highest_20, lowest_10, disparity_20)
+    [V31.35 수정]
+    1. volume_ratio 초기 NaN 취약점 보정 (.fillna(1.0))
+    2. true_range 재사용을 통한 연산 최적화 (ATR/ADX/Turtle)
+    3. 터틀 전략 필수 지표 3종 추가 (highest_high_20, lowest_low_10, atr_20)
+    4. 데이터 계약 및 무결성 검증 강화
     """
     
     # [V31.0] 필수 컬럼 검증
     required_columns = [
-        "datetime",
-        "open",
-        "high",
-        "low",
-        "close",
-        "volume",
-        "asset_type"
+        "datetime", "open", "high", "low", "close", "volume", "asset_type"
     ]
 
     for col in required_columns:
@@ -33,7 +27,7 @@ def calculate_indicators(df):
         df['value'] = df['close'] * df['volume']
 
         # =========================
-        # 1. 이동평균선 (Regime 판정용 포함)
+        # 1. 이동평균선
         # =========================
         df['ma5'] = df['close'].rolling(window=5).mean()
         df['ma20'] = df['close'].rolling(window=20).mean()
@@ -58,22 +52,25 @@ def calculate_indicators(df):
         df['bb_lower'] = df['bb_middle'] - (std20 * 2)
 
         # =========================
-        # 4. Volume Indicators
+        # 4. Volume Indicators (Stabilized)
         # =========================
         df['volume_ma'] = df['volume'].rolling(window=20).mean()
-        df['volume_ratio'] = df['volume'] / df['volume_ma']
+        # [V31.35] 초기 NaN 구간을 1.0(중립 비율)로 보정하여 연산 안정성 확보
+        df['volume_ratio'] = (df['volume'] / df['volume_ma']).fillna(1.0)
 
         # =========================
-        # 5. ATR 및 ADX (Standard Calculation)
+        # 5. ATR 및 ADX (Optimized)
         # =========================
         high_low = df['high'] - df['low']
         high_close = (df['high'] - df['close'].shift()).abs()
         low_close = (df['low'] - df['close'].shift()).abs()
+        
+        # true_range를 변수로 추출하여 하단 지표에서 재사용
         true_range = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
         df['atr'] = true_range.rolling(window=14).mean()
         df['atr_percent'] = (df['atr'] / df['close']) * 100
 
-        # ADX 계산 (high/low/close 기반 표준 방식)
+        # ADX 계산
         up_move = df['high'] - df['high'].shift()
         down_move = df['low'].shift() - df['low']
         plus_dm = np.where((up_move > down_move) & (up_move > 0), up_move, 0)
@@ -88,20 +85,24 @@ def calculate_indicators(df):
         # ============================================================
         # 6. 전략 필수 지표 및 무결성 검증
         # ============================================================
-        # TURTLE 진입/청산 지표
+        # 기존 전략 지표
         df["highest_20"] = df["high"].rolling(window=20).max()
         df["lowest_10"] = df["low"].rolling(window=10).min()
-        
-        # DISPARITY 진입 지표
         df["disparity_20"] = (df["close"] / df["ma20"]) * 100
-        
-        # Regime 판정용 지표 (disparity_abs)
         df['disparity_abs'] = (df['close'] - df['ma20']).abs() / df['ma20']
 
-        # [무결성] market_adapter 및 전략 필수 필드 전수 조사
+        # [TURTLE INDICATORS START]
+        # 최적화된 true_range 재사용
+        df["highest_high_20"] = df["high"].rolling(window=20).max()
+        df["lowest_low_10"] = df["low"].rolling(window=10).min()
+        df["atr_20"] = true_range.rolling(window=20).mean()
+        # [TURTLE INDICATORS END]
+
+        # [무결성] 필수 필드 전수 조사
         required = [
             "ma20", "ma50", "ma200", "atr_percent", "disparity_abs", 
-            "highest_20", "lowest_10", "adx", "disparity_20"
+            "highest_20", "lowest_10", "adx", "disparity_20",
+            "highest_high_20", "lowest_low_10", "atr_20", "volume_ratio"
         ]
         for col in required:
             if col not in df.columns:

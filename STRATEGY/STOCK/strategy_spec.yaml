@@ -1,0 +1,89 @@
+# ============================================================
+# IRONCLAD_V31.45 - Strategy Specification (Final Contract)
+# ============================================================
+
+strategy_info:
+  name: "IRONCLAD_MULTI_4_STOCK"
+  version: "1.0.4"
+
+# 1. REGIME CONTROL (통합 관제 섹션)
+regime:
+  # [수정 1] 엔진 요구 계약: 단순 문자열 매핑에서 상세 제어 객체로 변경
+  switch:
+    TREND:
+      strategy: "TURTLE"
+      allow_entry: true
+    RANGE:
+      strategy: "DISPARITY"
+      allow_entry: true
+    NO_TRADE:
+      strategy: "NONE"
+      allow_entry: false
+
+  current_state: "NO_TRADE"
+
+  evaluation_order:
+    - TREND
+    - RANGE
+    - NO_TRADE
+
+  global_filter:
+    metric: "change_rate"
+    threshold: -0.01
+
+  conditions:
+    TREND:
+      all:
+        - { field: "close", op: ">", ref: "ma200", multiplier: 1.0 }
+        - { field: "ma20", op: ">", ref: "ma50", multiplier: 1.0 }
+        - { field: "adx", op: ">", value: 25 }
+    RANGE:
+      all:
+        - { field: "adx", op: "<", value: 20 }
+        - { field: "atr_percent", op: "<", value: 1.5 }
+        - { field: "disparity_abs", op: "<=", value: 0.005 }
+    NO_TRADE:
+      fallback: true
+
+  persistence:
+    TREND:
+      min_hold_bars: 8
+    RANGE:
+      min_hold_bars: 5
+
+# 2. STRATEGY DEFINITIONS
+strategies:
+
+  TURTLE:
+    strategy_id: "TURTLE"
+    risk_per_trade: 0.01
+    stop_distance: 2.0
+    
+    # [ENTRY] all(AND) 논리 구조 유지
+    entry_conditions:
+      all:
+        - { field: "close", op: ">", ref: "highest_high_20", multiplier: 1.0 }
+        - { field: "close", op: ">", ref: "ma200", multiplier: 1.0 }
+
+    # [수정 2] EXIT: force_exit 제거 및 순수 가격 지표 기반 any(OR) 구조
+    exit_conditions:
+      any:
+        - { field: "close", op: "<", ref: "lowest_low_10", multiplier: 1.0 }
+
+  DISPARITY:
+    strategy_id: "DISPARITY"
+    risk_per_trade: 0.005
+    stop_distance: 1.5
+
+    # [ENTRY] all(AND) 논리 구조 유지
+    entry_conditions:
+      all:
+        - { field: "close", op: "<", ref: "ma20", multiplier: 0.96 }
+        - { field: "close", op: ">", ref: "ma20", multiplier: 0.90 }
+        - { field: "volume_ratio", op: ">=", value: 1.2 }
+        - { field: "close", op: ">", ref: "low", multiplier: 1.005 }
+
+    # [EXIT] any(OR) 논리 구조 유지
+    exit_conditions:
+      any:
+        - { field: "close", op: ">=", ref: "ma20", multiplier: 1.0 }

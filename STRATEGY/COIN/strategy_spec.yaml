@@ -1,9 +1,9 @@
 # ============================================================
-# IRONCLAD_V31.30 - Strategy Specification (Merged SSOT)
+# IRONCLAD_V31.30 - Strategy Specification (COIN SSOT)
 # ============================================================
 
 strategy_info:
-  name: "IRONCLAD_MULTI_4"
+  name: "IRONCLAD_MULTI_4_COIN"
   version: "1.0.2"
 
 # 1. REGIME CONTROL (통합 관제 섹션)
@@ -15,11 +15,9 @@ regime:
     - RANGE
     - NO_TRADE
 
-  # [NEW] regime_rules.yaml에서 통합된 글로벌 진입 필터
-  # Majority Evaluation을 위한 기준값 정의
   global_filter:
     metric: "change_rate"
-    threshold: -0.01  # -1% 이상인 종목이 과반수일 때만 진입 허용
+    threshold: -0.01
 
   conditions:
     TREND:
@@ -27,17 +25,14 @@ regime:
         - { field: "close", op: ">", ref: "ma200", multiplier: 1.0 }
         - { field: "ma20", op: ">", ref: "ma50", multiplier: 1.0 }
         - { field: "adx", op: ">", value: 25 }
-    
     RANGE:
       all:
         - { field: "adx", op: "<", value: 20 }
         - { field: "atr_percent", op: "<", value: 1.5 }
         - { field: "disparity_abs", op: "<=", value: 0.005 }
-
     NO_TRADE:
       fallback: true
 
-  # [추가 1] persistence 섹션 삽입
   persistence:
     TREND:
       min_hold_bars: 8
@@ -57,24 +52,13 @@ regime:
       strategy: "NONE"
       allow_entry: false
 
-# 2. STRATEGY DEFINITIONS
+# 2. STRATEGY PRIVATE CONFIG (전략별 고유 설정)
 strategies:
   TURTLE:
+    strategy_id: "TURTLE"
     risk_per_trade: 0.01
     stop_distance: 2.0
-    entry_conditions:
-      all:
-        - { field: "close", op: ">=", ref: "highest_20", multiplier: 1.0 }
-    exit_conditions:
-      any:
-        - { field: "close", op: "<=", ref: "lowest_10", multiplier: 1.0 }
-
   DISPARITY:
-    risk_per_trade: 0.01
+    strategy_id: "DISPARITY"
+    risk_per_trade: 0.005
     stop_distance: 1.5
-    entry_conditions:
-      all:
-        - { field: "disparity_20", op: "<=", value: 95 }
-    exit_conditions:
-      any:
-        - { field: "disparity_20", op: ">=", value: 102 }

@@ -1,5 +1,5 @@
 # ============================================================
-# IRONCLAD_V31.33 - Data Integrity & Contract-Aligned Selector
+# IRONCLAD_V31.34 - Data Integrity & Strict-Contract Selector
 # ============================================================
 import os
 import yaml
@@ -56,10 +56,12 @@ def select_candidates(data: List[Dict[str, Any]], strategy_path: str) -> List[Di
         # [4] 1차 필터링 (Liquidity & Volatility)
         f_cfg = rules["filter"]
         
-        liq_sorted = sorted(valid_data, key=lambda x: x["current"].get("value", 0), reverse=True)
+        # 🔴 [V31.34 수정] .get() 제거: 유동성 데이터 누락 시 즉시 예외 발생
+        liq_sorted = sorted(valid_data, key=lambda x: x["current"]["value"], reverse=True)
         liq_candidates = liq_sorted[:f_cfg["liquidity"]["top_n"]]
         
-        vol_sorted = sorted(liq_candidates, key=lambda x: x["history"].iloc[-1].get("atr_percent", 0), reverse=True)
+        # 🔴 [V31.34 수정] .get() 제거: 변동성 데이터 누락 시 즉시 예외 발생
+        vol_sorted = sorted(liq_candidates, key=lambda x: x["history"].iloc[-1]["atr_percent"], reverse=True)
         intermediate = vol_sorted[:f_cfg["volatility"]["top_n"]]
 
         # [5] 랭킹 및 가중치 점수 계산
@@ -76,7 +78,8 @@ def select_candidates(data: List[Dict[str, Any]], strategy_path: str) -> List[Di
                 elif field in curr_info:
                     val = curr_info[field]
                 else:
-                    raise RuntimeError(f"SELECTOR_FIELD_MISSING: {field} for {x.get('symbol')}")
+                    # 🔴 [V31.34 수정] .get() 제거: 심볼 정보 누락 시 즉시 예외 발생
+                    raise RuntimeError(f"SELECTOR_FIELD_MISSING: {field} for {x['symbol']}")
                 score += float(val) * weight
             return score
 
@@ -98,11 +101,10 @@ def select_candidates(data: List[Dict[str, Any]], strategy_path: str) -> List[Di
 def _save_selected_symbols(final_selection: List[Dict[str, Any]]):
     """
     선택된 심볼 저장
-    - [수정] 절대경로 계약 준수: BASE_DIR 기반으로 STATE 경로 명시
+    - 절대경로 계약 준수
     """
     symbols = [item["symbol"] for item in final_selection]
     
-    # [수정] 상대경로 의존성 제거
     state_dir = os.path.join(BASE_DIR, "STATE")
     os.makedirs(state_dir, exist_ok=True)
     
