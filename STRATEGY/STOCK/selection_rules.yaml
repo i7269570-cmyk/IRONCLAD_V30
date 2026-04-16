@@ -1,0 +1,25 @@
+# ============================================================
+# IRONCLAD_V31.33 - Selector Rules (Testing Bypass Mode)
+# ============================================================
+
+selector_rules:
+
+  # [1] 시장 진단 비활성화 (테스트 시 무조건 통과)
+  market_check:
+    enabled: false
+
+  # [2] 필터 완화 (데이터 부족으로 인한 누락 방지)
+  filter:
+    liquidity:
+      top_n: 10
+    volatility:
+      top_n: 10
+
+  # [3] 랭킹 단순화 (단일 필드 점수화)
+  ranking:
+    - field: "close"
+      weight: 1.0
+
+  # [4] 최종 선정 수 (테스트 집중을 위해 1개로 제한)
+  selection:
+    final_top_k: 1

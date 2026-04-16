@@ -5,6 +5,9 @@ import time
 from RUNTIME.run import run_pipeline
 from .status_logger import status_normal, status_warning, status_error
 
+# [1] 전역 변수 추가 (체결 추적용)
+last_order_symbol = None
+
 if __name__ == "__main__":
     paths = {}
     no_trade_count = 0
@@ -29,6 +32,11 @@ if __name__ == "__main__":
             system_config = yaml.safe_load(f)
 
         while True:
+            # [2] 체결 이상 감지 (루프 시작 시 직전 주문 검증)
+            if last_order_symbol:
+                if last_order_symbol not in state.get("positions", {}):
+                    status_error(f"FILL_FAIL_DETECTED: {last_order_symbol}")
+
             # [수정 1] 불필요한 중복 print 제거 및 파이프라인 실행
             result = run_pipeline(["CRYPTO"], paths, strategy_path, state_path, evidence_path, state, system_config)
 
@@ -36,6 +44,11 @@ if __name__ == "__main__":
                 no_trade_count += 1
             else:
                 no_trade_count = 0
+
+            # [3] 성공 결과 처리 및 마지막 주문 심볼 갱신
+            if result == "SUCCESS":
+                if state.get("positions"):
+                    last_order_symbol = list(state["positions"].keys())[0]
 
             # [수정 2] '==' 연산자로 로그 폭발 방지 (딱 3회차에 1번만 경고)
             if no_trade_count == 3:

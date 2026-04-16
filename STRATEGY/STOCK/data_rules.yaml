@@ -1,0 +1,7 @@
+source: local
+path: data/
+timeframe: 1m
+window_size: 250
+
+universe_paths:
+  stock: STATE/selected_symbols.json  # 🎯 selector_runner와 연결을 위해 반드시 필요

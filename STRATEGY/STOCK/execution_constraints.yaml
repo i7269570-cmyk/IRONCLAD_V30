@@ -1,0 +1,38 @@
+# ==============================================================================
+# EXECUTION CONSTRAINTS (IRONCLAD_V27)
+# Description: 시스템 실행 제약 조건 및 안전 규칙 설정 파일
+# Encoding: UTF-8 (Strict)
+# ==============================================================================
+
+execution_constraints:
+  # [Slippage] 주문 실행 시 허용되는 최대 슬리피지 임계치 (0.3%)
+  slippage:
+    order_max_slippage_pct: 0.003
+
+  # [Latency] 네트워크 및 시스템 지연 최대 허용치 (초과 시 SAFE_HALT 검토)
+  latency:
+    max_order_delay_ms: 500
+
+  # [Liquidity] 시장 진입을 위한 최소 유동성 조건
+  liquidity:
+    # 최소 거래대금 기준 상향 조정: 300억
+    min_value: 30000000000        
+    min_volume_ratio: 1.5
+
+  # [Spread] 호가 스프레드 제한 (0.2%)
+  spread:
+    max_spread_pct: 0.002
+
+  # [Safety] 실행 안전 규칙 및 상태 관리 (IRONCLAD 필수 준수 사항)
+  safety:
+    # 단일 포지션 유지 및 중복 진입 엄격 금지
+    forbid_duplicate_position: true
+    # 동일 자산군 내 중복 노출 제한
+    forbid_same_asset_group: true
+
+# ==============================================================================
+# [Execution Rules]
+# 1. 상태 기반 실행: state.json이 필수적으로 존재해야 함
+# 2. 데이터 이상 시 거래 금지: TRADE_ALLOWED_FALSE 전환
+# 3. SAFE_HALT: 무결성 불일치 또는 필수 데이터 결손 시 즉시 정지
+# ==============================================================================
