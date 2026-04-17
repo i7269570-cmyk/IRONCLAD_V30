@@ -1,38 +1,38 @@
 # ============================================================
-# IRONCLAD_V31.33 - 주식 시장 선별 규칙 (selector 계약 일치 버전)
+# IRONCLAD_V31.33 - 코인 시장 선별 규칙 (selector 계약 일치 버전)
 # ============================================================
 
 filter:
 
   liquidity:
     enabled: true
-    min_value: 30000000000      # 300억
+    min_value: 10000000000     # 코인은 낮춰도 됨 (100억)
     top_n: 30
 
   volatility:
     enabled: true
-    min: 2.0
-    max: 15.0
-    top_n: 10
+    min: 1.5
+    max: 20.0
+    top_n: 15
 
   trend:
     enabled: true
-    min_score: 0.5
+    min_score: 0.4
 
 market_check:
   enabled: true
   condition:
     key: value
     operator: ">="
-    value: 1000000000
+    value: 500000000
 
 ranking:
   - field: "daily_value"
-    weight: 0.4
+    weight: 0.5
   - field: "volatility"
-    weight: 0.4
+    weight: 0.3
   - field: "trend_score"
     weight: 0.2
 
 selection:
-  final_top_k: 3
+  final_top_k: 5

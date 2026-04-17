@@ -1,8 +1,8 @@
 # =================================================
-# IRONCLAD_V27_CORE - Standard Git Ignore Profile
+# IRONCLAD_V30 - Standard Git Ignore Profile
 # =================================================
 
-# --- Environment / Secrets (보안 필수) ---
+# --- Environment / Secrets (보안 및 인증 정보) ---
 .env
 .env.*
 *.key
@@ -16,7 +16,7 @@ SECURITY/
 logs/
 *.log
 
-# --- Data Folders (실시간/연구 데이터 제외) ---
+# --- Data Folders (실시간 데이터 및 연구 데이터) ---
 data/
 DATA/
 raw_data/
@@ -28,7 +28,7 @@ candles/
 orderbook/
 EVIDENCE/raw_data_orderbook/
 EVIDENCE/raw_data_ticks/
-TRINITY_RESEARCH_CLEAN/  # 연구용 폴더 제외 (선택 사항)
+TRINITY_RESEARCH_CLEAN/
 
 # --- Large/Binary Files ---
 *.parquet
@@ -44,7 +44,7 @@ TRINITY_RESEARCH_CLEAN/  # 연구용 폴더 제외 (선택 사항)
 *.db
 *.db-journal
 
-# --- Python Cache (경로 상관없이 모두 차단) ---
+# --- Python Cache (모든 경로의 컴파일 파일 차단) ---
 **/__pycache__/
 *.pyc
 *.pyo
@@ -77,16 +77,20 @@ Thumbs.db
 *.swp
 
 # =================================================
-# SYSTEM INTEGRITY & SSOT (무결성 유지 목록)
+# SYSTEM INTEGRITY & SSOT (무결성 유지 목록 - 화이트리스트)
 # =================================================
 
-# 아래 파일들은 시스템의 '헌법'이므로 절대 제외하지 않음 
+# 아래 파일들은 시스템의 '헌법'이므로 Git 추적에서 절대 제외하지 않음 
 !schema.json
 !system_config.yaml
 !strategy_spec.yaml
 !LOCKED/**/schema.json
 
 # --- State Management ---
-# state.json은 실행 시마다 변경되므로 버전 관리에서 제외하는 것이 원칙입니다.
-# 만약 초기 템플릿만 저장하고 싶다면 아래 주석을 해제하세요.
-# IRONCLAD_V30/STATE/state.json
+# 실시간으로 변경되는 상태 파일은 버전 관리에서 제외하여 충돌을 방지합니다. 
+STATE/state_stock.json
+STATE/state_coin.json
+STATE/state.json
+
+# 만약 STATE 폴더의 구조(템플릿)만 유지하고 싶다면 아래 주석을 해제하세요.
+# !STATE/*.json.example

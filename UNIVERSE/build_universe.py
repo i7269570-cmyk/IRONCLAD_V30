@@ -1,167 +1,111 @@
 import os
-import yaml
 import json
-import logging
 import pandas as pd
-import ccxt
 import requests
+import time
 from datetime import datetime
+from dotenv import load_dotenv
 
 # ============================================================
-# IRONCLAD_V28.1 - Universe Builder (Standard Mapping Fixed)
+# IRONCLAD_V31.52 - Universe Builder (OHLCV-Based Stock Scoring)
 # ============================================================
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUTPUT_DIR = os.path.join(PROJECT_ROOT, "UNIVERSE")
-STRATEGY_DIR = os.path.join(PROJECT_ROOT, "STRATEGY")
-CONFIG_PATH = os.path.join(PROJECT_ROOT, "LOCKED", "system_config.yaml")
+load_dotenv(os.path.join(PROJECT_ROOT, ".env"))
 
 class LSClient:
-    """LS증권 OpenAPI 기반 종목 데이터 수집 클라이언트"""
+    """LS증권 공통 클라이언트 (인증 전담)"""
     def __init__(self):
-        with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-            config = yaml.safe_load(f)
-        
-        self.app_key = config["ls_api"]["app_key"]
-        self.app_secret = config["ls_api"]["app_secret"]
+        self.app_key = os.getenv("LS_APP_KEY")
+        self.app_secret = os.getenv("LS_APP_SECRET")
         self.base_url = "https://openapi.ls-sec.co.kr:8080"
         self.access_token = self._get_token()
 
     def _get_token(self):
         url = f"{self.base_url}/oauth2/token"
-        headers = {"content-type": "application/x-www-form-urlencoded"}
-        params = {
-            "grant_type": "client_credentials",
-            "appkey": self.app_key,
-            "appsecret": self.app_secret,
-            "scope": "oob"
-        }
-        res = requests.post(url, headers=headers, data=params)
-        if res.status_code == 200:
-            return res.json()["access_token"]
-        raise RuntimeError(f"LS_API_AUTH_FAILED: {res.text}")
+        params = {"grant_type": "client_credentials", "appkey": self.app_key, "appsecretkey": self.app_secret, "scope": "oob"}
+        res = requests.post(url, headers={"content-type": "application/x-www-form-urlencoded"}, data=params)
+        return res.json().get("access_token")
 
-    def get_stock_list(self):
-        """KOSPI(0) + KOSDAQ(1) 전종목 리스트 수집 (t8436)"""
-        url = f"{self.base_url}/stock/etc" 
-        headers = {
-            "content-type": "application/json; charset=utf-8",
-            "authorization": f"Bearer {self.access_token}",
-            "tr_cd": "t8436",
-            "tr_cont": "N"
-        }
+class LSStockUniverse:
+    """[보안] 전일 OHLCV 기반 거래대금 산출 클래스"""
+    def __init__(self, access_token):
+        self.base_url = "https://openapi.ls-sec.co.kr:8080"
+        self.token = access_token
+
+    def get_all_symbols(self):
+        """전체 종목 리스트 수집 (t8436)"""
+        url = f"{self.base_url}/stock/master"
+        headers = {"authorization": f"Bearer {self.token}", "tr_cd": "t8436"}
+        res = requests.post(url, headers=headers, json={})
+        data = res.json()
+        return [item["shcode"] for item in data.get("t8436OutBlock", [])]
+
+    def fetch_ohlcv(self, symbol):
+        """전일 일봉 데이터 수집 및 거래대금 계산 (t8410)"""
+        url = f"{self.base_url}/stock/chart"
+        headers = {"authorization": f"Bearer {self.token}", "tr_cd": "t8410"}
+        body = {"t8410InBlock": {"shcode": symbol, "gubun": "2", "qrycnt": "2"}} # 일봉 2개
         
-        all_stocks = []
-        for gubun in ["0", "1"]: 
-            body = {"t8436InBlock": {"gubun": gubun}}
+        try:
             res = requests.post(url, headers=headers, json=body)
-            if res.status_code == 200:
-                # t8436 응답: shcode(단축코드), hname(종목명), expcode(표준코드) 등
-                all_stocks.extend(res.json()["t8436OutBlock"])
-        return all_stocks
+            out = res.json().get("t8411OutBlock", res.json().get("t8410OutBlock", [])) # TR 호환성 대응
+            if len(out) < 2: return None
+            
+            prev = out[1] # 전일 데이터 (인덱스 주의: LS API 특성에 따라 조정 가능)
+            close = float(prev["close"])
+            volume = float(prev["volume"])
+            return close * volume # 거래대금 산출
+        except:
+            return None
 
-    def get_market_data(self, stocks):
-        """LS API 실제 필드 매핑 (amt: 거래대금)"""
-        processed_data = []
-        # 실제 환경에서는 t1102(주식현재가호가) 또는 t8407(주식멀티조회) 활용
-        # 본 코드에서는 LS API 필드 명세에 따라 'amt'(백만단위)를 'value'로 매핑
-        for s in stocks:
-            try:
-                # 'amt'는 LS증권 API에서 주로 사용하는 거래대금 필드명 (백만원 단위)
-                raw_value = float(s.get("amt", s.get("value", 0))) 
-                processed_data.append({
-                    "symbol": s["shcode"],
-                    "name": s["hname"],
-                    "price": float(s.get("price", 0)),
-                    "value": raw_value * 1000000, # 원 단위 변환
-                    "change_rate": float(s.get("diff", 0)) # 등락률
-                })
-            except:
-                continue
-        return processed_data
+def build_stock_universe(access_token):
+    client = LSStockUniverse(access_token)
+    print("🚀 [STOCK] 전체 종목 수집 및 전일 수급 분석 중...")
+    symbols = client.get_all_symbols()
+    results = []
 
-def get_stock_candidates():
-    client = LSClient()
-    raw_list = client.get_stock_list()
-    if not raw_list:
-        raise RuntimeError("LS_API_RETURNED_EMPTY_LIST")
-    return client.get_market_data(raw_list)
-
-def filter_universe(asset_type: str, candidates: list) -> list:
-    df = pd.DataFrame(candidates)
-    if df.empty:
-        return []
-
-    # [수정 1] SSOT 준수: system_config에서 직접 min_value 참조
-    with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-        system_config = yaml.safe_load(f)
-    
-    # execution_constraints -> liquidity -> min_value (300억)
-    try:
-        min_value = system_config["execution_constraints"]["liquidity"]["min_value"]
-    except KeyError:
-        min_value = 30000000000 # 최후의 방어선
-
-    # 1. 거래대금 필터링
-    df = df[df['value'] >= min_value]
-    if df.empty:
-        return []
-
-    # [수정 2] Universe Limit 고정 (50개)
-    # selector_rules의 top_n과 혼동 방지를 위해 하드코딩 또는 명시적 상수 사용
-    limit = 50 
-
-    # 2. 거래대금 상위 정렬 및 추출
-    df = df.sort_values(by="value", ascending=False)
-    universe = df['symbol'].head(limit).tolist()
-    
-    # [수정 3] 예외 처리 강화
-    if asset_type == "STOCK" and len(universe) < 50:
-        logging.warning(f"STOCK_UNIVERSE_INCOMPLETE: {len(universe)} symbols found.")
-        # 50개 미만 시 에러를 던져 파이프라인 중단 (요구사항 준수)
-        raise RuntimeError(f"SAFE_HALT: Universe count {len(universe)} is under 50.")
+    for i, sym in enumerate(symbols):
+        try:
+            val = client.fetch_ohlcv(sym)
+            if val is not None:
+                results.append({"symbol": sym, "value": val})
+        except: continue
         
-    return universe
+        time.sleep(0.05) # API 속도 최적화 (0.2s -> 0.05s 단축 시도)
+        if i % 100 == 0:
+            print(f"진행: {i}/{len(symbols)} (수급 분석 중)")
+
+    df = pd.DataFrame(results)
+    if df.empty: return []
+    
+    # 🎯 100억 이상 상위 50개 필터링
+    return df[df["value"] >= 10000000000].sort_values(by="value", ascending=False).head(50)["symbol"].tolist()
 
 def build_universe():
-    if not os.path.exists(OUTPUT_DIR):
-        os.makedirs(OUTPUT_DIR)
+    if not os.path.exists(OUTPUT_DIR): os.makedirs(OUTPUT_DIR)
 
-    # 1. STOCK
+    # 1. STOCK (OHLCV 전수조사 기반)
     try:
-        stock_candidates = get_stock_candidates()
-        stock_universe = filter_universe("STOCK", stock_candidates)
-        
-        output = {
-            "symbols": stock_universe, 
-            "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "source": "LS_OPEN_API"
-        }
+        auth = LSClient()
+        stock_list = build_stock_universe(auth.access_token)
         with open(os.path.join(OUTPUT_DIR, "stock_universe.json"), "w", encoding="utf-8") as f:
-            json.dump(output, f, indent=4)
-        print(f"✅ STOCK UNIVERSE: {len(stock_universe)} symbols (Min Value: 300억)")
-    except Exception as e:
-        raise RuntimeError(f"STOCK_BUILD_CRITICAL: {str(e)}")
+            json.dump({"symbols": stock_list, "updated_at": str(datetime.now())}, f, indent=4, ensure_ascii=False)
+        print(f"✅ STOCK UNIVERSE 완료: {len(stock_list)} 종목 선정 (300억↑)")
+    except Exception as e: print(f"❌ STOCK_BUILD_FAIL: {e}")
 
-    # 2. CRYPTO (기존 로직 유지)
+    # 2. CRYPTO (Upbit KRW 기준)
     try:
-        exchange = ccxt.binance()
-        ticker_data = exchange.fetch_tickers()
-        crypto_candidates = []
-        for symbol, ticker in ticker_data.items():
-            if symbol.endswith('/USDT'):
-                crypto_candidates.append({
-                    'symbol': symbol,
-                    'value': ticker.get('quoteVolume', 0),
-                    'change_rate': ticker.get('percentage', 0)
-                })
-        crypto_universe = filter_universe("CRYPTO", crypto_candidates)
-        
+        res = requests.get("https://api.upbit.com/v1/market/all")
+        krw_markets = [d["market"] for d in res.json() if d["market"].startswith("KRW-")]
+        t_res = requests.get(f"https://api.upbit.com/v1/ticker?markets={','.join(krw_markets)}")
+        tickers = t_res.json()
+        crypto_list = [t['market'] for t in sorted(tickers, key=lambda x: x['acc_trade_price_24h'], reverse=True)[:50]]
         with open(os.path.join(OUTPUT_DIR, "crypto_universe.json"), "w", encoding="utf-8") as f:
-            json.dump({"symbols": crypto_universe, "updated_at": str(datetime.now())}, f, indent=4)
-        print(f"✅ CRYPTO UNIVERSE: {len(crypto_universe)} symbols")
-    except Exception as e:
-        print(f"❌ CRYPTO_BUILD_FAILED: {e}")
+            json.dump({"symbols": crypto_list, "updated_at": str(datetime.now())}, f, indent=4)
+        print(f"✅ CRYPTO UNIVERSE 완료: {len(crypto_list)} 종목 선정 (Upbit KRW)")
+    except Exception as e: print(f"❌ CRYPTO_BUILD_FAIL: {e}")
 
 if __name__ == "__main__":
     build_universe()

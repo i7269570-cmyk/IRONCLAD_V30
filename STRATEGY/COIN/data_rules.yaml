@@ -1,10 +1,10 @@
-market: stock
+market: crypto
 timeframe: 1m
 
 window_size: 200
 
 universe_paths:
-  stock: UNIVERSE/stock_universe.json
+  crypto: UNIVERSE/crypto_universe.json
 
 constraints:
   min_volume: 0

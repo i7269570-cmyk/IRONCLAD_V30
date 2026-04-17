@@ -1,16 +1,11 @@
 {
   "capital": {
-    "total": 10000000,
-    "stock_alloc": 0,
-    "crypto_alloc": 0
+    "total": 10000000
   },
   "positions": {},
   "symbols": {
-    "stock": [],
-    "crypto": ["A", "B", "C"]
+    "crypto": ["BTC", "ETH"] 
   },
-  "date": "2026-04-01",
-  "cooldown": {},
-  "last_reconciled": "2026-04-01T00:00:00.000000",
+  "date": "2026-04-17",
   "daily_pnl": 0
 }

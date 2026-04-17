@@ -1,24 +1,25 @@
+import time
 import pandas as pd
 import yaml
 import os
 import json
-from ls_adapter import LSAdapter
+import sys
+
+sys.path.append(os.path.dirname(__file__))
+
+# ============================================================
+# IRONCLAD_V31.47 - Data Loader (Adapter Branching Applied)
+# ============================================================
 
 def load_market_data(asset_types, strategy_path, access_token):
-    # 🎯 핵심: 실행 파일 위치(RUNTIME/) 기준으로 프로젝트 루트를 정확히 포착
-    # /프로젝트/RUNTIME/data_loader.py -> 상위로 두 번 이동하면 /프로젝트/ 루트 도달
-    PROJECT_ROOT = os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "..", "..")
-    )
-    adapter = LSAdapter(access_token)
-    
+    PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     rules_path = os.path.join(strategy_path, "data_rules.yaml")
     
     try:
         with open(rules_path, "r", encoding="utf-8") as f:
             data_rules = yaml.safe_load(f)
             
-        window_size = data_rules.get("window_size")
+        window_size = data_rules.get("window_size") # [보안] MISSING_WINDOW_SIZE 해결책
         universe_paths = data_rules.get("universe_paths")
 
         if window_size is None:
@@ -29,40 +30,59 @@ def load_market_data(asset_types, strategy_path, access_token):
 
     data_bundle = {}
 
+    # 🎯 [보안점 해결] 자산별 루프 진입
     for asset_type in asset_types:
+        current_asset_type = asset_type.upper()
+        
+        # 🔥 [사용자 제안 로직 적용] 어댑터 물리적 분리
+        if current_asset_type == "STOCK":
+            from ls_adapter import LSAdapter
+            adapter = LSAdapter(access_token)
+        elif current_asset_type == "CRYPTO":
+            try:
+                from upbit_adapter import UpbitAdapter
+                adapter = UpbitAdapter()
+            except ImportError:
+                print("⚠️ [SKIP] UpbitAdapter.py 누락으로 코인 수집 건너뜀")
+                continue
+        else:
+            continue
+
         suffix = universe_paths.get(asset_type.lower())
-        if not suffix:
-            continue
+        if not suffix: continue
             
-        # 🎯 핵심: 명시적으로 계산된 PROJECT_ROOT를 사용하여 읽기 경로 생성
-        universe_file = os.path.join(PROJECT_ROOT, suffix)
-
-        if not os.path.exists(universe_file):
-            # 파일이 없으면 빈 번들을 반환하여 시스템 중단 방지
-            continue
-
-        with open(universe_file, 'r', encoding='utf-8') as f:
-            universe_data = json.load(f)
-            
-        symbols = universe_data if isinstance(universe_data, list) else universe_data.get("symbols", [])
+        universe_full_path = os.path.join(PROJECT_ROOT, suffix)
+        
+        try:
+            with open(universe_full_path, "r", encoding="utf-8") as f:
+                univ_data = json.load(f)
+                symbols = univ_data.get("symbols", [])
+        except Exception: continue
 
         for symbol in symbols:
+            # API 레이트 리밋 보호 (0.6초 대기)
+            time.sleep(0.6)
+            
+            # 🎯 해당 자산 전용 어댑터로 OHLCV 데이터 호출
             raw_data = adapter.fetch_ohlcv(symbol, window_size)
-            if raw_data is None or len(raw_data) == 0:
-                continue 
+            
+            if not raw_data: continue
 
-            current = raw_data[-1]
+            # 유효 데이터 필터링 (거래량 > 0)
+            valid_rows = [row for row in raw_data if int(row.get("jvol") or row.get("volume") or 0) > 0]
+            if not valid_rows: continue
+
+            current = valid_rows[-1]
             data_bundle[symbol] = {
-                
                 "current": {
-                    "price": current["close"],          # ✔ 수정
-                    "volume": current["volume"],
-                    "high": current["high"], 
+                    "price": current["close"],
+                    "volume": current.get("volume") or current.get("jvol"),
+                    "high": current["high"],
                     "low": current["low"],
-                    "asset_type": "STOCK",              # ✔ 추가
-                    "asset_group": "KOSPI_KOSDAQ"       # ✔ 추가
+                    "open": current["open"]
                 },
-                "history": raw_data
+                "history": pd.DataFrame(valid_rows),
+                "asset_type": current_asset_type
             }
 
     return data_bundle
