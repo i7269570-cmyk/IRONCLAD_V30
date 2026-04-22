@@ -10,7 +10,7 @@ def validate_before_order(sig: dict, market_data: dict, constraints: dict, state
     """
 
     try:
-        # [MOD 2] Validate constraints schema
+        # Validate constraints schema
         if "safety" not in constraints:
             raise RuntimeError("CONSTRAINTS_SCHEMA_VIOLATION: safety missing")
 
@@ -30,21 +30,24 @@ def validate_before_order(sig: dict, market_data: dict, constraints: dict, state
         symbol = sig["symbol"]
 
         # 2. Minimum Value Check (Liquidity)
-        if market_data["value"] < constraints["liquidity"]["min_value"]:
+        if "min_daily_volume_value" not in constraints["liquidity"]:
+            raise RuntimeError("CONSTRAINTS_SCHEMA_VIOLATION: min_daily_volume_value missing")
+
+        if market_data["value"] < constraints["liquidity"]["min_daily_volume_value"]:
             return False
 
         # 3. Volume Ratio Check (Anomaly Detection)
         if "volume_ratio" not in market_data:
             raise RuntimeError("PRE_ORDER_CHECK_FAULT: 'volume_ratio' missing in market_data.")
-            
+
         if market_data["volume_ratio"] < constraints["liquidity"]["min_volume_ratio"]:
             return False
 
-        # 4. Price Deviation Check (Spread Replacement)
-        if "price" not in market_data:
-            raise RuntimeError("PRE_ORDER_CHECK_FAULT: 'price' missing in market_data.")
+        # 4. Price Deviation Check (close 기준)
+        if "close" not in market_data:
+            raise RuntimeError("PRE_ORDER_CHECK_FAULT: 'close' missing in market_data.")
 
-        m_price = market_data["price"]
+        m_price = market_data["close"]
         price_diff_pct = abs(m_price - price) / price
 
         if price_diff_pct > constraints["spread"]["max_spread_pct"]:
@@ -54,24 +57,23 @@ def validate_before_order(sig: dict, market_data: dict, constraints: dict, state
         if price_diff_pct > constraints["slippage"]["order_max_slippage_pct"]:
             return False
 
-        # [Anti-Duplicate Order Logic]
-        # Duplicate position: return False (Not a system fault)
+        # 6. Anti-Duplicate Order
         if symbol in state["positions"]:
             return False
-        
+
         if state.get("pending_orders", {}).get(symbol):
             raise RuntimeError(f"PENDING_ORDER_EXISTS: {symbol}")
 
-        # 7. Same Asset Group Check (Correlation Risk)
+        # 7. Same Asset Group Check
         if constraints["safety"]["forbid_same_asset_group"]:
             if "asset_group" not in sig:
                 raise RuntimeError("PRE_ORDER_CHECK_FAULT: 'asset_group' missing in sig.")
-            
+
             asset_group = sig["asset_group"]
             for pos in state["positions"].values():
                 if "asset_group" not in pos:
                     raise RuntimeError("PRE_ORDER_CHECK_FAULT: 'asset_group' missing in state position.")
-                
+
                 if pos["asset_group"] == asset_group:
                     return False
 

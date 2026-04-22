@@ -1,0 +1,14 @@
+# data_rules.yaml (루트의 DATA/ 폴더 또는 STRATEGY/ 폴더에 위치 권장)
+timeframe: 1m
+window_size: 200
+
+# 자산군별 설정 통합
+asset_config:
+  STOCK:
+    universe_path: UNIVERSE/stock_universe.json
+  CRYPTO:
+    universe_path: UNIVERSE/crypto_universe.json
+
+# 공통 제약 조건
+constraints:
+  min_volume: 0

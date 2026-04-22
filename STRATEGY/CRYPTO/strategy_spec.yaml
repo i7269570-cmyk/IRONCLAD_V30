@@ -1,0 +1,59 @@
+version: 1
+
+# =========================
+# 1. 거래 스케줄 (24/7)
+# =========================
+schedule:
+  trading_days: ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]
+  trading_time:
+    start: "00:00"
+    end: "23:59"
+
+# =========================
+# 2. 강제 청산 (없음 - 24시간 운영)
+# =========================
+force_exit:
+  enabled: false
+
+# =========================
+# 3. 종목 선택 (항상 3개)
+# =========================
+selection:
+  final_top_k: 3
+
+# =========================
+# 4. 진입 조건
+# 전략: 20봉 신고가 돌파 + 거래량 급증 + 상승 추세 확인
+# =========================
+entry:
+  risk_per_trade: 0.01
+  stop_distance: 0.02
+  conditions:
+    # 현재가가 20봉 최고가 돌파
+    - field: close
+      op: ">"
+      ref: highest_20
+      multiplier: 1.0
+
+    # 거래량 급증 (평균 대비 1.5배 이상)
+    - field: volume_ratio
+      op: ">="
+      value: 1.5
+
+    # 단기 상승 추세 (ma5 > ma20)
+    - field: ma5
+      op: ">"
+      ref: ma20
+      multiplier: 1.0
+
+    # RSI 과열 제외 (70 미만)
+    - field: rsi
+      op: "<"
+      value: 70
+
+# =========================
+# 5. 청산 조건
+# =========================
+exit:
+  take_profit: 0.015     # +1.5%
+  stop_loss: 0.02        # -2.0%

@@ -1,0 +1,21 @@
+execution_constraints:
+  slippage:
+    # 0.3% 슬리피지 제한 (공통)
+    order_max_slippage_pct: 0.003 
+
+  liquidity:
+    # [핵심] 최소 거래대금 기준 통합 적용
+    # 주식은 300억, 코인은 500억 등 변별력이 필요하다면 이 파라미터를 
+    # 전략 스펙(strategy_spec.yaml)으로 빼야 하지만, 
+    # 지금은 시스템 안전망이므로 '절대적 최소값'을 공통 적용합니다.
+    min_daily_volume_value: 30000000000  # 300억 원 (공통 안전 기준)
+    min_volume_ratio: 1.5               # 평소 대비 1.5배 수급 발생 시에만 진입
+
+  spread:
+    # 0.2% ~ 0.5% 사이로 관리 (코인은 변동성이 커서 0.5%로 완화 고려)
+    max_spread_pct: 0.005 
+
+  safety:
+    # 시스템 전역 안전 규칙 (공통)
+    forbid_duplicate_position: true
+    forbid_same_asset_group: true

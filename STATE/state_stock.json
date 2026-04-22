@@ -1,10 +1,15 @@
 {
   "capital": {
-    "total": 1000000  
+    "total": 1000000
   },
   "positions": {},
   "symbols": {
-    "stock": ["005930.KS", "000660.KS"]
+    "stock": [
+      "069500",
+      "092220",
+      "000990"
+    ]
   },
-  "daily_pnl": 0
+  "daily_pnl": 0,
+  "asset_type": "STOCK"
 }
