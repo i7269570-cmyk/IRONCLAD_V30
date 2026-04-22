@@ -1,8 +1,8 @@
 # =================================================
-# IRONCLAD_V30 - Standard Git Ignore Profile
+# IRONCLAD_V31 - Optimized Git Ignore Profile
 # =================================================
 
-# --- Environment / Secrets (보안 및 인증 정보) ---
+# --- Environment / Secrets ---
 .env
 .env.*
 *.key
@@ -16,7 +16,7 @@ SECURITY/
 logs/
 *.log
 
-# --- Data Folders (실시간 데이터 및 연구 데이터) ---
+# --- Data Folders (백테스트 및 실시간 데이터) ---
 data/
 DATA/
 raw_data/
@@ -44,7 +44,7 @@ TRINITY_RESEARCH_CLEAN/
 *.db
 *.db-journal
 
-# --- Python Cache (모든 경로의 컴파일 파일 차단) ---
+# --- Python Cache ---
 **/__pycache__/
 *.pyc
 *.pyo
@@ -80,17 +80,19 @@ Thumbs.db
 # SYSTEM INTEGRITY & SSOT (무결성 유지 목록 - 화이트리스트)
 # =================================================
 
-# 아래 파일들은 시스템의 '헌법'이므로 Git 추적에서 절대 제외하지 않음 
 !schema.json
 !system_config.yaml
 !strategy_spec.yaml
 !LOCKED/**/schema.json
 
-# --- State Management ---
-# 실시간으로 변경되는 상태 파일은 버전 관리에서 제외하여 충돌을 방지합니다. 
-STATE/state_stock.json
-STATE/state_coin.json
-STATE/state.json
+# --- State Management (수시로 변하는 실시간 상태 파일 제외) ---
+# Git이 이 파일들의 '내용'을 추적하지 않도록 명시적으로 제외
+STATE/*.json
 
-# 만약 STATE 폴더의 구조(템플릿)만 유지하고 싶다면 아래 주석을 해제하세요.
-# !STATE/*.json.example
+# =================================================
+# 중요: 이미 Git이 추적 중인 파일 제거 명령
+# =================================================
+# 이 파일들을 수정 후 터미널에 아래 명령어를 한 번 입력해야 완전히 제외됩니다.
+# git rm --cached STATE/state_stock.json
+# git rm --cached STATE/state_coin.json
+# git rm --cached STATE/state.json
