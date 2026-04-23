@@ -100,22 +100,20 @@ def _parse_and_compare(data: Dict[str, Any], cond: Dict[str, Any]) -> bool:
 
 def apply_market_direction_filter(base_regime: str, data_bundle: Dict[str, Any]) -> Dict[str, Any]:
     """
-    STOCK: ma20 <= ma60 (RANGE) 일 때만 진입 허용
+    STOCK: ma20 vs ma60 비교로 RANGE 구간 판단
     CRYPTO: index 종목 없음 → base_regime 그대로 통과
-    검증 결과: RANGE PF 2.814 / TREND PF 0.7
     """
     index_symbol = "069500"
 
     if index_symbol not in data_bundle:
-        # CRYPTO → base_regime 그대로 통과
         if base_regime in ("TREND", "RANGE"):
             return {"final_regime": base_regime}
         return {"final_regime": "NO_TRADE"}
 
     index_data = data_bundle[index_symbol]
 
-    ma20 = index_data.get("ma20")
-    ma60 = index_data.get("ma60")
+    ma20  = index_data.get("ma20")
+    ma60  = index_data.get("ma60")
     close = index_data.get("close")
 
     if ma20 is None or close is None:
@@ -132,11 +130,11 @@ def apply_market_direction_filter(base_regime: str, data_bundle: Dict[str, Any])
             f"REGIME_FILTER_ERROR: index({index_symbol}) ma60/ma200 누락"
         )
 
-    # RANGE 구간 판단: ma20 <= ma60
-    is_range = ma20 <= ma60
+    # RANGE 구간 판단: 중기 이평이 단기 이평 이상
+    mid_above_short = ma60 >= ma20
 
-    if not is_range:
-        logger.info(f"REGIME_FILTER: TREND 구간 감지 (ma20={ma20:.0f} > ma60={ma60:.0f}) -> NO_TRADE")
+    if not mid_above_short:
+        logger.info(f"REGIME_FILTER: TREND 구간 감지 -> NO_TRADE")
         return {"final_regime": "NO_TRADE"}
 
     if base_regime in ("TREND", "RANGE"):

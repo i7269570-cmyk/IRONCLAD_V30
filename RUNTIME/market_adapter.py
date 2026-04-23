@@ -1,62 +1,45 @@
 # ============================================================
-# IRONCLAD_V31.35 - Unified Market Data Adapter (Full Contract Sync)
+# IRONCLAD_V31.37 - Market Data Adapter
+# ============================================================
+# SSOT 계약:
+#   data_bundle[symbol] = {
+#       "asset_type":  str,   ← 최상위 (regime/entry 접근 편의)
+#       "asset_group": str,   ← 최상위 (regime/entry 접근 편의)
+#       "current":     dict,  # price, value, asset_type, asset_group 포함
+#       "history":     DataFrame  # 지표 포함 전체 df
+#   }
 # ============================================================
 from typing import Dict, Any
-import pandas as pd
 
-def build_market_data_map(data_bundle: Dict[str, Any]) -> Dict[str, Any]:
+
+def build_market_data_map(raw_data_bundle: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    data_loader 출력에 asset_type/group 을 최상위로 추가하여 반환.
+    구조 변환 최소화 — current/history 원본 유지.
+    """
     result = {}
 
-    for symbol, v in data_bundle.items():
+    for symbol, v in raw_data_bundle.items():
         current = v.get("current")
         history = v.get("history")
 
         if history is None or history.empty:
             raise RuntimeError(f"EMPTY_HISTORY: {symbol}")
 
-        asset_type = current.get("asset_type")
+        if not current:
+            raise RuntimeError(f"MISSING_CURRENT: {symbol}")
+
+        asset_type  = current.get("asset_type")
         asset_group = current.get("asset_group")
 
         if not asset_type or not asset_group:
-            raise RuntimeError(f"METADATA_MISSING: {symbol} (asset_type/group)")
-
-        last_row = history.iloc[-1]
-
-        required_indicators = [
-            "close", "ma20", "ma50", "ma60", "ma200",
-            "atr_percent", "disparity_abs",
-            "highest_20", "lowest_10", "disparity_20", "volume_ratio"
-        ]
-        for field in required_indicators:
-            if field not in last_row:
-                print(f"⚠️ SKIP: {symbol} missing {field}")
-                continue
+            raise RuntimeError(f"METADATA_MISSING: {symbol}")
 
         result[symbol] = {
-            "asset_type": asset_type,
-            "asset_group": asset_group,
-
-            # Regime Filter
-            "close": last_row["close"],
-            "ma20": last_row["ma20"],
-            "ma50": last_row["ma50"],
-            "ma60": last_row["ma60"],
-            "ma200": last_row["ma200"],
-            "atr_percent": last_row["atr_percent"],
-            "disparity_abs": last_row["disparity_abs"],
-
-            # Entry/Exit
-            "highest_20": last_row["highest_20"],
-            "lowest_10": last_row["lowest_10"],
-            "disparity_20": last_row["disparity_20"],
-            "low": last_row["low"],
-
-            # Execution
-            "value": current["value"],
-            "volume_ratio": last_row["volume_ratio"],
-
-            # 원본 보존
-            "_history_row": last_row
+            "asset_type":  asset_type,   # 최상위 노출 (regime/entry 직접 접근)
+            "asset_group": asset_group,  # 최상위 노출
+            "current":     current,      # 원본 유지
+            "history":     history,      # 원본 유지
         }
 
     return result
