@@ -1,98 +1,39 @@
-# =================================================
-# IRONCLAD_V31 - Optimized Git Ignore Profile
-# =================================================
-
-# --- Environment / Secrets ---
-.env
-.env.*
-*.key
-*.pem
-*.secret
-keys/
-wallet/
-SECURITY/
-
-# --- Logs ---
-logs/
-*.log
-
-# --- Data Folders (백테스트 및 실시간 데이터) ---
-data/
-DATA/
-raw_data/
-cache/
-datasets/
-backtest/
-ticks/
-candles/
-orderbook/
-EVIDENCE/raw_data_orderbook/
-EVIDENCE/raw_data_ticks/
-TRINITY_RESEARCH_CLEAN/
-
-# --- Large/Binary Files ---
-*.parquet
-*.feather
-*.h5
-*.csv
-*.gz
-*.zip
-
-# --- Database ---
-*.sqlite
-*.sqlite3
-*.db
-*.db-journal
-
-# --- Python Cache ---
+# Python
 **/__pycache__/
-*.pyc
-*.pyo
-*.pyd
+*.py[cod]
 
-# --- Virtual Environment ---
-venv/
-.venv/
-env/
-ENV/
+# State (핵심)
+STATE/*.json
+STATE/**/*.json
 
-# --- Build / Temporary ---
-build/
-dist/
-tmp/
-temp/
+# Data
+DATA/
+
+# Logs
+*.log
+*.out
+*.err
+
+# DB / Temp
+*.sqlite
+*.db
 *.tmp
+*.bak
 
-# --- IDE / Editor ---
+# Backtest 결과
+BACKTEST/output/
+BACKTEST/result/
+
+# Environment
+.env
+
+# IDE
 .vscode/
 .idea/
-nppBackup/
 
-# --- OS / Backup ---
+# Test cache
+.pytest_cache/
+
+# OS
 .DS_Store
 Thumbs.db
-*.bak
-*.old
-*.backup
-*.swp
-
-# =================================================
-# SYSTEM INTEGRITY & SSOT (무결성 유지 목록 - 화이트리스트)
-# =================================================
-
-!schema.json
-!system_config.yaml
-!strategy_spec.yaml
-!LOCKED/**/schema.json
-
-# --- State Management (수시로 변하는 실시간 상태 파일 제외) ---
-# Git이 이 파일들의 '내용'을 추적하지 않도록 명시적으로 제외
-STATE/*.json
-
-# =================================================
-# 중요: 이미 Git이 추적 중인 파일 제거 명령
-# =================================================
-# 이 파일들을 수정 후 터미널에 아래 명령어를 한 번 입력해야 완전히 제외됩니다.
-# git rm --cached STATE/state_stock.json
-# git rm --cached STATE/state_coin.json
-# git rm --cached STATE/state.json
